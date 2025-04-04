@@ -30,6 +30,29 @@ def get_bee_conversations(page=1):
         print(f"Error making API request: {e}")
         raise
 
+def clean_bee_text(text):
+    """
+    Clean text from Bee API responses by removing redundant headers and formatting.
+    
+    Args:
+        text (str): Text to clean
+    Returns:
+        str: Cleaned text
+    """
+    replacements = [
+        ('## Summary\n', ''),
+        ('##Summary\n', ''),
+        ('Summary:\n', ''),
+        ('## Bruce\'s Memory Summary\n', ''),
+        ('**Summary:**', ''),
+        ('**Summary:** ', '')
+    ]
+    
+    for old, new in replacements:
+        text = text.replace(old, new)
+    
+    return text.strip()
+
 def generate_markdown(conversation):
     """
     Generate markdown content from a conversation.
@@ -48,15 +71,7 @@ def generate_markdown(conversation):
     
     # Add summary as subheading, cleaning up the text
     if conversation.get('summary'):
-        summary_text = conversation['summary']
-        # Remove any existing summary headers and formatting
-        summary_text = summary_text.replace('## Summary\n', '')
-        summary_text = summary_text.replace('##Summary\n', '')
-        summary_text = summary_text.replace('Summary:\n', '')
-        summary_text = summary_text.replace('## Bruce\'s Memory Summary\n', '')
-        summary_text = summary_text.replace('**Summary:**', '')
-        summary_text = summary_text.replace('**Summary:** ', '')
-        summary_text = summary_text.strip()
+        summary_text = clean_bee_text(conversation['summary'])
         content.append(f"\n## Summary\n{summary_text}\n")
     
     return "\n".join(content)
@@ -64,13 +79,14 @@ def generate_markdown(conversation):
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
+    Append multiple conversations from the same day to the same file.
     """
     # Create target directory if it doesn't exist
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
     
     page = 1
-    processed_dates = set()
+    daily_conversations = {}  # Store conversations by date
     
     while True:
         response = get_bee_conversations(page)
@@ -83,26 +99,32 @@ def process_conversations():
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
             date_str = start_date.strftime('%Y-%m-%d')
             
-            # Skip if we've already processed this date
-            if date_str in processed_dates:
-                continue
-                
-            processed_dates.add(date_str)
-            
-            # Generate markdown content
-            markdown_content = generate_markdown(conversation)
-            
-            # Write markdown file to target directory
-            output_file = target_path / f"{date_str}.md"
-            output_file.write_text(markdown_content, encoding='utf-8')
-            
-            print(f"Created markdown file: {output_file}")
+            # Add conversation to daily collection
+            if date_str not in daily_conversations:
+                daily_conversations[date_str] = []
+            daily_conversations[date_str].append(conversation)
         
         # Move to next page
         if page >= response.get('totalPages', 0):
             break
             
         page += 1
+    
+    # Write all conversations for each date to their respective files
+    for date_str, conversations in daily_conversations.items():
+        # Sort conversations by start_time
+        conversations.sort(key=lambda x: x['start_time'])
+        
+        # Generate markdown for all conversations
+        markdown_content = []
+        for conversation in conversations:
+            markdown_content.append(generate_markdown(conversation))
+        
+        # Write markdown file to target directory
+        output_file = target_path / f"{date_str}.md"
+        output_file.write_text("\n\n".join(markdown_content), encoding='utf-8')
+        
+        print(f"Created markdown file: {output_file}")
 
 if __name__ == "__main__":
     try:
