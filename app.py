@@ -76,10 +76,23 @@ def generate_markdown(conversation):
     
     return "\n".join(content)
 
+def file_exists(target_path: Path, date_str: str) -> bool:
+    """
+    Check if a markdown file already exists for the given date.
+    
+    Args:
+        target_path (Path): Directory path where files are stored
+        date_str (str): Date string in YYYY-MM-DD format
+    Returns:
+        bool: True if file exists, False otherwise
+    """
+    file_path = target_path / f"{date_str}.md"
+    return file_path.exists()
+
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-    Append multiple conversations from the same day to the same file.
+    Skip files that already exist.
     """
     # Create target directory if it doesn't exist
     target_path = Path(TARGET_DIR)
@@ -98,6 +111,11 @@ def process_conversations():
             # Convert start_time to date string
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
             date_str = start_date.strftime('%Y-%m-%d')
+            
+            # Skip if file already exists
+            if file_exists(target_path, date_str):
+                print(f"Skipping existing file: {date_str}.md")
+                continue
             
             # Add conversation to daily collection
             if date_str not in daily_conversations:
