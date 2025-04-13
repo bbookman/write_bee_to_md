@@ -129,7 +129,7 @@ def generate_markdown(conversations_for_day):
     for conversation, conversation_detail in conversations_for_day:
         content.append("Conversation ID: " + str(conversation['id']))
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
-            content.append("Location: " + conversation['primary_location']['address'])
+            content.append("Location: " + conversation['primary_location']['address'] + "\n")
         
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
