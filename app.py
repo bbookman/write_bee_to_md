@@ -119,7 +119,7 @@ def generate_markdown(conversations_for_day):
             atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
             if atmosphere:
                 content.append("### Atmosphere")
-                content.append(atmosphere)
+                content.append(atmosphere + "\n")  # Add single newline after atmosphere content
                 
             takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
             if takeaways:
