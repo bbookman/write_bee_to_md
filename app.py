@@ -92,18 +92,27 @@ def clean_bee_text(text):
 def extract_section(text, section_name):
     """
     Extract a section from the summary text based on markdown headers.
+    Handles both ### and # format, as well as non-markdown format.
     
     Args:
         text (str): Full summary text
-        section_name (str): Name of section to extract (e.g., 'Atmosphere')
+        section_name (str): Name of section to extract (e.g., 'Key Takeaways')
     Returns:
         str: Extracted section content or empty string if not found
     """
+    # Try markdown format with ###
     pattern = f"### {section_name}\n(.*?)(?=###|$)"
     match = re.search(pattern, text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return ""
+    if not match:
+        # Try markdown format with #
+        pattern = f"# {section_name}\n(.*?)(?=#|$)"
+        match = re.search(pattern, text, re.DOTALL)
+    if not match:
+        # Try without markdown
+        pattern = f"{section_name}\n(.*?)(?=\n\n|$)"
+        match = re.search(pattern, text, re.DOTALL)
+    
+    return match.group(1).strip() if match else ""
 
 def generate_markdown(conversations_for_day):
     """
@@ -146,19 +155,26 @@ def generate_markdown(conversations_for_day):
     
     # Extract and add atmosphere from all conversations
     atmospheres = []
+    key_takeaways = []
     for conversation, _ in conversations_for_day:
         if conversation.get('summary'):
             atmosphere = extract_section(conversation['summary'], 'Atmosphere')
             if atmosphere:
                 atmospheres.append(atmosphere)
+            
+            takeaways = extract_section(conversation['summary'], 'Key Takeaways')
+            if takeaways:
+                key_takeaways.append(takeaways)
     
     if atmospheres:
         content.append("## Atmosphere")
         content.append("\n".join(atmospheres))
         content.append("\n")
     
-    content.append("## Key Takeaways")
-    content.append("\n")
+    if key_takeaways:
+        content.append("## Key Takeaways")
+        content.append("\n".join(key_takeaways))
+        content.append("\n")
     
     return "\n".join(content)
 
