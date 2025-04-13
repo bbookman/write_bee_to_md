@@ -52,7 +52,6 @@ def get_conversation_detail(conversation_id):
         response.raise_for_status()
         data = response.json()
         
-        # Check if we have transcriptions
         transcriptions = data.get('conversation', {}).get('transcriptions', [])
         if transcriptions:
             utterances = transcriptions[0].get('utterances', [])
@@ -69,11 +68,6 @@ def get_conversation_detail(conversation_id):
 def clean_bee_text(text):
     """
     Clean text from Bee API responses by removing redundant headers and formatting.
-    
-    Args:
-        text (str): Text to clean
-    Returns:
-        str: Cleaned text
     """
     replacements = [
         ('## Summary\n', ''),
@@ -93,22 +87,13 @@ def extract_section(text, section_name):
     """
     Extract a section from the summary text based on markdown headers.
     Handles both ### and # format, as well as non-markdown format.
-    
-    Args:
-        text (str): Full summary text
-        section_name (str): Name of section to extract (e.g., 'Key Takeaways')
-    Returns:
-        str: Extracted section content or empty string if not found
     """
-    # Try markdown format with ###
     pattern = f"### {section_name}\n(.*?)(?=###|$)"
     match = re.search(pattern, text, re.DOTALL)
     if not match:
-        # Try markdown format with #
         pattern = f"# {section_name}\n(.*?)(?=#|$)"
         match = re.search(pattern, text, re.DOTALL)
     if not match:
-        # Try without markdown
         pattern = f"{section_name}\n(.*?)(?=\n\n|$)"
         match = re.search(pattern, text, re.DOTALL)
     
@@ -117,43 +102,42 @@ def extract_section(text, section_name):
 def generate_markdown(conversations_for_day):
     """
     Generate markdown content for all conversations in a day.
-    Contains the top-level summary from conversations[0].short_summary
     """
+    if not conversations_for_day:
+        return ""
+        
     content = []
     date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
-    # Daily header
-    content.append(f"# {date_str}\n")
+    content.append(f"# {date_str}")
     
-    # Add the top-level short summary from conversations array
     if conversations_for_day[0][0].get('short_summary'):
-        content.append(f"{clean_bee_text(conversations_for_day[0][0]['short_summary'])}\n")
+        content.append("## " + clean_bee_text(conversations_for_day[0][0]['short_summary']))
+        content.append("\n")
         
-        # Extract and add atmosphere and key takeaways from the same conversation's summary
         if conversations_for_day[0][0].get('summary'):
             atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
             if atmosphere:
-                content.append(f"Atmosphere\n{atmosphere}\n")
+                content.append("### Atmosphere")
+                content.append(atmosphere)
                 
             takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
             if takeaways:
-                content.append(f"Key Takeaways\n{takeaways}\n")
+                content.append("### Key Takeaways")
+                content.append(takeaways)
     
-    # Process each conversation's transcript
     for conversation, conversation_detail in conversations_for_day:
-        content.append("\n")
-        content.append(f"Conversation ID: {conversation['id']}")
+        content.append("Conversation ID: " + str(conversation['id']))
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
-            content.append(f"Location: {conversation['primary_location']['address']}\n")
+            content.append("Location: " + conversation['primary_location']['address'])
         
-        # Add transcript section
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
         if transcriptions and transcriptions[0].get('utterances'):
-            content.append("\n### Transcript")
+            content.append("### Transcript")
             for utterance in transcriptions[0]['utterances']:
                 if utterance.get('text') and utterance.get('speaker'):
-                    content.append(f"Speaker {utterance['speaker']}: {utterance['text']}\n")
+                    content.append("Speaker " + str(utterance['speaker']) + ": " + utterance['text'])
     
     return "\n".join(content)
 
@@ -173,9 +157,8 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-    Only process 5 days maximum.
+    Only process 1 day maximum.
     """
-    # Create target directory if it doesn't exist
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
     
@@ -184,62 +167,52 @@ def process_conversations():
     page = 1
     daily_conversations = {}
     days_processed = 0
-    max_days = 5  # Limit to 5 days
+    max_days = 1
     
     while True and days_processed < max_days:
         response = get_bee_conversations(page)
         
         if not response.get('conversations'):
+            print("DEBUG: No conversations found in response")
             break
             
+        print(f"DEBUG: Found {len(response['conversations'])} conversations")
+        
         for conversation in response['conversations']:
-            # Get detailed conversation data
             conversation_detail = get_conversation_detail(conversation['id'])
             
-            # Convert start_time to date string
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
             date_str = start_date.strftime('%Y-%m-%d')
+            print(f"DEBUG: Processing conversation for date {date_str}")
             
-            # Skip if file already exists
-            output_file = target_path / f"{date_str}.md"
-            if output_file.exists():
-                print(f"Skipping existing file: {output_file}")
-                continue
-            
-            # Initialize the day's conversation list if needed
             if date_str not in daily_conversations:
                 daily_conversations[date_str] = []
                 days_processed += 1
-                if days_processed >= max_days:
+                print(f"DEBUG: Starting new day {date_str}")
+                if days_processed > max_days:
                     break
             
-            # Add conversation to the day's collection
             daily_conversations[date_str].append((conversation, conversation_detail))
+            print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
             
-        # Check if we've hit our day limit
         if days_processed >= max_days:
-            print(f"Reached maximum of {max_days} days")
             break
-            
-        # Move to next page
-        if page >= response.get('totalPages', 0):
-            break
-            
+        
         page += 1
     
-    # Write all conversations for each date to their respective files
+    # Process collected conversations after the loop
     for date_str, conversations in daily_conversations.items():
-        # Sort conversations by start_time
+        print(f"DEBUG: Writing {len(conversations)} conversations for {date_str}")
         conversations.sort(key=lambda x: x[0]['start_time'])
-        
-        # Generate markdown for all conversations
         markdown_content = generate_markdown(conversations)
         
-        # Write markdown file to target directory
+        if not markdown_content:
+            print(f"DEBUG: No markdown content generated for {date_str}")
+            continue
+            
         output_file = target_path / f"{date_str}.md"
         print(f"Writing to: {output_file}")
         output_file.write_text(markdown_content, encoding='utf-8')
-        
         print(f"Created markdown file: {output_file}")
 
 if __name__ == "__main__":
