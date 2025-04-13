@@ -88,35 +88,51 @@ def clean_bee_text(text):
     
     return text.strip()
 
-def generate_markdown(conversation, conversation_detail):
+def generate_markdown(conversations_for_day):
     """
-    Generate markdown content from a conversation and its details.
+    Generate markdown content for all conversations in a day.
+    
+    Args:
+        conversations_for_day (list): List of (conversation, conversation_detail) tuples for one day
+    Returns:
+        str: Combined markdown content for the day
     """
     content = []
+    date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
-    # Add short summary as header
-    content.append(f"# {conversation['short_summary']}\n")
+    # Daily header
+    content.append(f"#{date_str}\n")
     
-    # Add conversation ID
-    content.append(f"Conversation ID: {conversation['id']}\n")
+    # Process each conversation
+    for conversation, conversation_detail in conversations_for_day:
+        content.append("\n") # Add spacing before each conversation
+        
+        # Add conversation's short summary
+        if conversation.get('short_summary'):
+            content.append(f"## Summary: {clean_bee_text(conversation['short_summary'])}")
+        
+        # Conversation header with ID and location
+        content.append(f"\nConversation {conversation['id']}")
+        if conversation.get('primary_location') and conversation['primary_location'].get('address'):
+            content.append(f"Location: {conversation['primary_location']['address']}\n")
+        
+        # Transcript section
+        conversation_data = conversation_detail.get('conversation', {})
+        transcriptions = conversation_data.get('transcriptions', [])
+        if transcriptions and transcriptions[0].get('utterances'):
+            content.append("\n### Transcript")
+            for utterance in transcriptions[0]['utterances']:
+                if utterance.get('text') and utterance.get('speaker'):
+                    content.append(f"**Speaker {utterance['speaker']}**: {utterance['text']}\n")
+        
+        content.append("\n---\n")
     
-    # Add address if available
-    if conversation.get('primary_location') and conversation['primary_location'].get('address'):
-        content.append(f"Location: {conversation['primary_location']['address']}\n")
+    # Add atmosphere and key takeaways at the end
+    content.append("## Atmosphere")
+    content.append("\n")
     
-    # Add conversation transcript right after location
-    conversation_data = conversation_detail.get('conversation', {})
-    transcriptions = conversation_data.get('transcriptions', [])
-    if transcriptions and transcriptions[0].get('utterances'):
-        content.append("\n## Transcript\n")
-        for utterance in transcriptions[0]['utterances']:
-            if utterance.get('text') and utterance.get('speaker'):
-                content.append(f"**Speaker {utterance['speaker']}**: {utterance['text']}\n")
-    
-    # Add summary as last section
-    if conversation.get('summary'):
-        summary_text = clean_bee_text(conversation['summary'])
-        content.append(f"\n## Summary\n{summary_text}\n")
+    content.append("## Key Takeaways")
+    content.append("\n")
     
     return "\n".join(content)
 
@@ -163,25 +179,22 @@ def process_conversations():
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
             date_str = start_date.strftime('%Y-%m-%d')
             
-            # Skip if we've already processed this date
-            if date_str in daily_conversations:
-                continue
-                
             # Skip if file already exists
             output_file = target_path / f"{date_str}.md"
             if output_file.exists():
                 print(f"Skipping existing file: {output_file}")
                 continue
             
-            # Add conversation and its details to daily collection
+            # Initialize the day's conversation list if needed
             if date_str not in daily_conversations:
                 daily_conversations[date_str] = []
                 days_processed += 1
                 if days_processed >= max_days:
                     break
-                    
+            
+            # Add conversation to the day's collection
             daily_conversations[date_str].append((conversation, conversation_detail))
-        
+            
         # Check if we've hit our day limit
         if days_processed >= max_days:
             print(f"Reached maximum of {max_days} days")
@@ -199,14 +212,12 @@ def process_conversations():
         conversations.sort(key=lambda x: x[0]['start_time'])
         
         # Generate markdown for all conversations
-        markdown_content = []
-        for conversation, detail in conversations:
-            markdown_content.append(generate_markdown(conversation, detail))
+        markdown_content = generate_markdown(conversations)
         
         # Write markdown file to target directory
         output_file = target_path / f"{date_str}.md"
         print(f"Writing to: {output_file}")
-        output_file.write_text("\n\n---\n\n".join(markdown_content), encoding='utf-8')
+        output_file.write_text(markdown_content, encoding='utf-8')
         
         print(f"Created markdown file: {output_file}")
 
