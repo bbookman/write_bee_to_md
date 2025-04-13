@@ -117,64 +117,43 @@ def extract_section(text, section_name):
 def generate_markdown(conversations_for_day):
     """
     Generate markdown content for all conversations in a day.
-    
-    Args:
-        conversations_for_day (list): List of (conversation, conversation_detail) tuples for one day
-    Returns:
-        str: Combined markdown content for the day
+    Contains the top-level summary from conversations[0].short_summary
     """
     content = []
     date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
     # Daily header
-    content.append(f"# Conversations for {date_str}\n")
+    content.append(f"# {date_str}\n")
     
-    # Process each conversation
+    # Add the top-level short summary from conversations array
+    if conversations_for_day[0][0].get('short_summary'):
+        content.append(f"{clean_bee_text(conversations_for_day[0][0]['short_summary'])}\n")
+        
+        # Extract and add atmosphere and key takeaways from the same conversation's summary
+        if conversations_for_day[0][0].get('summary'):
+            atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
+            if atmosphere:
+                content.append(f"Atmosphere\n{atmosphere}\n")
+                
+            takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
+            if takeaways:
+                content.append(f"Key Takeaways\n{takeaways}\n")
+    
+    # Process each conversation's transcript
     for conversation, conversation_detail in conversations_for_day:
-        content.append("\n") # Add spacing before each conversation
-        
-        # Add conversation's short summary
-        if conversation.get('short_summary'):
-            content.append(f"{clean_bee_text(conversation['short_summary'])}")
-        
-        # Conversation header with ID and location
-        content.append(f"\n## Conversation {conversation['id']}")
+        content.append("\n")
+        content.append(f"Conversation ID: {conversation['id']}")
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
             content.append(f"Location: {conversation['primary_location']['address']}\n")
         
-        # Transcript section
+        # Add transcript section
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
         if transcriptions and transcriptions[0].get('utterances'):
             content.append("\n### Transcript")
             for utterance in transcriptions[0]['utterances']:
                 if utterance.get('text') and utterance.get('speaker'):
-                    content.append(f"**Speaker {utterance['speaker']}**: {utterance['text']}\n")
-        
-        content.append("\n---\n")
-    
-    # Extract and add atmosphere from all conversations
-    atmospheres = []
-    key_takeaways = []
-    for conversation, _ in conversations_for_day:
-        if conversation.get('summary'):
-            atmosphere = extract_section(conversation['summary'], 'Atmosphere')
-            if atmosphere:
-                atmospheres.append(atmosphere)
-            
-            takeaways = extract_section(conversation['summary'], 'Key Takeaways')
-            if takeaways:
-                key_takeaways.append(takeaways)
-    
-    if atmospheres:
-        content.append("## Atmosphere")
-        content.append("\n".join(atmospheres))
-        content.append("\n")
-    
-    if key_takeaways:
-        content.append("## Key Takeaways")
-        content.append("\n".join(key_takeaways))
-        content.append("\n")
+                    content.append(f"Speaker {utterance['speaker']}: {utterance['text']}\n")
     
     return "\n".join(content)
 
