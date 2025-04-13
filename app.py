@@ -2,6 +2,7 @@ import requests
 from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR
 from datetime import datetime
 from pathlib import Path
+import re
 
 def get_bee_conversations(page=1):
     """
@@ -88,6 +89,22 @@ def clean_bee_text(text):
     
     return text.strip()
 
+def extract_section(text, section_name):
+    """
+    Extract a section from the summary text based on markdown headers.
+    
+    Args:
+        text (str): Full summary text
+        section_name (str): Name of section to extract (e.g., 'Atmosphere')
+    Returns:
+        str: Extracted section content or empty string if not found
+    """
+    pattern = f"### {section_name}\n(.*?)(?=###|$)"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return ""
+
 def generate_markdown(conversations_for_day):
     """
     Generate markdown content for all conversations in a day.
@@ -101,7 +118,7 @@ def generate_markdown(conversations_for_day):
     date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
     # Daily header
-    content.append(f"#{date_str}\n")
+    content.append(f"# Conversations for {date_str}\n")
     
     # Process each conversation
     for conversation, conversation_detail in conversations_for_day:
@@ -109,10 +126,10 @@ def generate_markdown(conversations_for_day):
         
         # Add conversation's short summary
         if conversation.get('short_summary'):
-            content.append(f"## Summary: {clean_bee_text(conversation['short_summary'])}")
+            content.append(f"{clean_bee_text(conversation['short_summary'])}")
         
         # Conversation header with ID and location
-        content.append(f"\nConversation {conversation['id']}")
+        content.append(f"\n## Conversation {conversation['id']}")
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
             content.append(f"Location: {conversation['primary_location']['address']}\n")
         
@@ -127,9 +144,18 @@ def generate_markdown(conversations_for_day):
         
         content.append("\n---\n")
     
-    # Add atmosphere and key takeaways at the end
-    content.append("## Atmosphere")
-    content.append("\n")
+    # Extract and add atmosphere from all conversations
+    atmospheres = []
+    for conversation, _ in conversations_for_day:
+        if conversation.get('summary'):
+            atmosphere = extract_section(conversation['summary'], 'Atmosphere')
+            if atmosphere:
+                atmospheres.append(atmosphere)
+    
+    if atmospheres:
+        content.append("## Atmosphere")
+        content.append("\n".join(atmospheres))
+        content.append("\n")
     
     content.append("## Key Takeaways")
     content.append("\n")
