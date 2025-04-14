@@ -83,6 +83,20 @@ def clean_bee_text(text):
     
     return text.strip()
 
+def clean_summary(text):
+    """Strip all markdown formatting and headers from summary text."""
+    # First remove all ### Summary or # Summary headers
+    text = re.sub(r'^#{1,3}\s*Summary\n', '', text, flags=re.MULTILINE)
+    
+    # Then remove any remaining markdown headers
+    text = re.sub(r'^#{1,3}\s*', '', text, flags=re.MULTILINE)
+    
+    # Remove any Summary: text variations
+    text = re.sub(r'Summary:?\s*\n?', '', text)
+    
+    # Clean up any extra whitespace
+    return text.strip()
+
 def extract_section(text, section_name):
     """
     Extract a section from the summary text based on markdown headers.
@@ -100,9 +114,7 @@ def extract_section(text, section_name):
     return match.group(1).strip() if match else ""
 
 def generate_markdown(conversations_for_day):
-    """
-    Generate markdown content for all conversations in a day.
-    """
+    """Generate markdown content for all conversations in a day."""
     if not conversations_for_day:
         return ""
         
@@ -111,26 +123,22 @@ def generate_markdown(conversations_for_day):
     
     content.append(f"# {date_str}")
     
-    if conversations_for_day[0][0].get('short_summary'):
-        content.append("## " + clean_bee_text(conversations_for_day[0][0]['short_summary']))
+    # Main summary - strip all markdown and add only ##
+    if conversations_for_day[0][0].get('summary'):
+        summary_text = conversations_for_day[0][0]['summary']
+        summary_text = re.sub(r'^#{1,3}\s*Summary\n', '', summary_text, flags=re.MULTILINE)
+        summary_text = re.sub(r'^#{1,3}\s*', '', summary_text, flags=re.MULTILINE)
+        content.append(f"## {summary_text.strip()}")
         content.append("\n")
-        
-        if conversations_for_day[0][0].get('summary'):
-            content.append("## " + clean_bee_text(conversations_for_day[0][0]['summary']))
-            atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
-            if atmosphere:
-                content.append("### Atmosphere")
-                content.append(atmosphere + "\n")
-                
-            takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
-            if takeaways:
-                content.append("### Key Takeaways")
-                content.append(takeaways + "\n")  # Add single newline after key takeaways content
     
+    # Process each conversation
     for conversation, conversation_detail in conversations_for_day:
         content.append("Conversation ID: " + str(conversation['id']))
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
             content.append("Location: " + conversation['primary_location']['address'] + "\n")
+            
+        if conversation.get('short_summary'):
+            content.append(clean_bee_text(conversation['short_summary']))
         
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
@@ -158,7 +166,7 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-    Only process 1 day maximum.
+    Only process 5 days maximum.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -168,7 +176,7 @@ def process_conversations():
     page = 1
     daily_conversations = {}
     days_processed = 0
-    max_days = 1
+    max_days = 5  # Changed from 1 to 5
     
     while True and days_processed < max_days:
         response = get_bee_conversations(page)
