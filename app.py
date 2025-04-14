@@ -1,8 +1,9 @@
 import requests
 from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import re
+import time
 
 def get_bee_conversations(page=1):
     """
@@ -179,7 +180,7 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-    Skip writing files for today's conversations.
+e    Skip writing files for today's conversations.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -239,7 +240,22 @@ def process_conversations():
         print(f"Created markdown file: {output_file}")
 
 if __name__ == "__main__":
-    try:
-        process_conversations()
-    except Exception as e:
-        print(f"Failed to process conversations: {e}")
+    INTERVAL = 6 * 60 * 60  # 6 hours in seconds
+    
+    while True:
+        try:
+            print(f"\nDEBUG: Starting conversation processing at {datetime.now()}")
+            process_conversations()
+            
+            next_run = datetime.now() + timedelta(seconds=INTERVAL)
+            print(f"DEBUG: Next run scheduled for {next_run}")
+            
+            time.sleep(INTERVAL)
+            
+        except KeyboardInterrupt:
+            print("\nShutting down gracefully...")
+            break
+        except Exception as e:
+            print(f"Failed to process conversations: {e}")
+            # Wait 5 minutes before retrying on error
+            time.sleep(300)
