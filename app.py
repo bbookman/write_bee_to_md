@@ -126,10 +126,23 @@ def generate_markdown(conversations_for_day):
     # Main summary - strip all markdown and add only ##
     if conversations_for_day[0][0].get('summary'):
         summary_text = conversations_for_day[0][0]['summary']
+        # Remove existing Summary header
         summary_text = re.sub(r'^#{1,3}\s*Summary\n', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'^#{1,3}\s*', '', summary_text, flags=re.MULTILINE)
         content.append(f"## {summary_text.strip()}")
         content.append("\n")
+        
+        # Extract and add Atmosphere section
+        atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
+        if atmosphere:
+            content.append("### Atmosphere")
+            content.append(atmosphere + "\n")
+        
+        # Extract and add Key Takeaways section
+        takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
+        if takeaways:
+            content.append("### Key Takeaways")
+            content.append(takeaways + "\n")
     
     # Process each conversation
     for conversation, conversation_detail in conversations_for_day:
