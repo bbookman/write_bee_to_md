@@ -179,6 +179,7 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
+    Skip writing files for today's conversations.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -187,6 +188,7 @@ def process_conversations():
     
     page = 1
     daily_conversations = {}
+    today = datetime.now().date()
     
     while True:
         response = get_bee_conversations(page)
@@ -200,6 +202,13 @@ def process_conversations():
             conversation_detail = get_conversation_detail(conversation['id'])
             
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
+            conversation_date = start_date.date()
+            
+            # Skip if conversation is from today
+            if conversation_date >= today:
+                print(f"DEBUG: Skipping today's conversation from {conversation_date}")
+                continue
+                
             date_str = start_date.strftime('%Y-%m-%d')
             print(f"DEBUG: Processing conversation for date {date_str}")
             
