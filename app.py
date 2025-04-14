@@ -142,21 +142,21 @@ def generate_markdown(conversations_for_day):
         takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
         if takeaways:
             content.append("### Key Takeaways")
-            content.append(takeaways + "\n")
+            content.append(takeaways)
     
     # Process each conversation
     for conversation, conversation_detail in conversations_for_day:
-        content.append("Conversation ID: " + str(conversation['id']))
+        content.append("\nConversation ID: " + str(conversation['id']))
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
             content.append("Location: " + conversation['primary_location']['address'] + "\n")
             
         if conversation.get('short_summary'):
-            content.append(clean_bee_text(conversation['short_summary']))
+            content.append(f"{clean_summary(conversation['short_summary'])}\n")
         
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
         if transcriptions and transcriptions[0].get('utterances'):
-            content.append("### Transcript")
+            content.append("### Transcript\n")
             for utterance in transcriptions[0]['utterances']:
                 if utterance.get('text') and utterance.get('speaker'):
                     content.append("Speaker " + str(utterance['speaker']) + ": " + utterance['text'])
