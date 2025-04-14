@@ -116,6 +116,7 @@ def generate_markdown(conversations_for_day):
         content.append("\n")
         
         if conversations_for_day[0][0].get('summary'):
+            content.append("## " + clean_bee_text(conversations_for_day[0][0]['summary']))
             atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
             if atmosphere:
                 content.append("### Atmosphere")
