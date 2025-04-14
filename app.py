@@ -166,7 +166,6 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-    Only process 5 days maximum.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -175,14 +174,11 @@ def process_conversations():
     
     page = 1
     daily_conversations = {}
-    days_processed = 0
-    max_days = 5  # Changed from 1 to 5
     
-    while True and days_processed < max_days:
+    while True:
         response = get_bee_conversations(page)
         
         if not response.get('conversations'):
-            print("DEBUG: No conversations found in response")
             break
             
         print(f"DEBUG: Found {len(response['conversations'])} conversations")
@@ -196,20 +192,16 @@ def process_conversations():
             
             if date_str not in daily_conversations:
                 daily_conversations[date_str] = []
-                days_processed += 1
-                print(f"DEBUG: Starting new day {date_str}")
-                if days_processed > max_days:
-                    break
             
             daily_conversations[date_str].append((conversation, conversation_detail))
             print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
             
-        if days_processed >= max_days:
+        if page >= response.get('totalPages', 0):
             break
-        
+            
         page += 1
     
-    # Process collected conversations after the loop
+    # Process collected conversations
     for date_str, conversations in daily_conversations.items():
         print(f"DEBUG: Writing {len(conversations)} conversations for {date_str}")
         conversations.sort(key=lambda x: x[0]['start_time'])
