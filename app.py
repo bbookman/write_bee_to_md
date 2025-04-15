@@ -1,5 +1,5 @@
 import requests
-from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR
+from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR, PAGES_TO_GET
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
@@ -180,7 +180,8 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-e    Skip writing files for today's conversations.
+    Skip writing files for today's conversations.
+    Only process the number of pages specified in PAGES_TO_GET.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -191,12 +192,14 @@ e    Skip writing files for today's conversations.
     daily_conversations = {}
     today = datetime.now().date()
     
-    while True:
+    while page <= PAGES_TO_GET:  # Only get specified number of pages
         response = get_bee_conversations(page)
+        print(f"DEBUG: Processing page {page} of {PAGES_TO_GET}")
         
         if not response.get('conversations'):
+            print("DEBUG: No conversations found in response")
             break
-            
+        
         print(f"DEBUG: Found {len(response['conversations'])} conversations")
         
         for conversation in response['conversations']:
@@ -219,7 +222,9 @@ e    Skip writing files for today's conversations.
             daily_conversations[date_str].append((conversation, conversation_detail))
             print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
             
-        if page >= response.get('totalPages', 0):
+        # Stop if we've reached the total pages or our PAGES_TO_GET limit
+        if page >= response.get('totalPages', 0) or page >= PAGES_TO_GET:
+            print(f"DEBUG: Reached page limit ({page}/{PAGES_TO_GET})")
             break
             
         page += 1
