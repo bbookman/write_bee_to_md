@@ -124,26 +124,37 @@ def generate_markdown(conversations_for_day):
     
     content.append(f"# {date_str}")
     
-    # Main summary - strip all markdown and add only ##
+    # Main summary - remove Atmosphere and Key Takeaways sections completely
     if conversations_for_day[0][0].get('summary'):
         summary_text = conversations_for_day[0][0]['summary']
-        # Remove existing Summary header
+        
+        # First remove sections we'll add separately
+        summary_text = re.sub(r'### Atmosphere\n.*?(?=###|$)', '', summary_text, flags=re.DOTALL)
+        summary_text = re.sub(r'### Key Takeaways\n.*?(?=###|$)', '', summary_text, flags=re.DOTALL)
+        summary_text = re.sub(r'### Action Items\n.*?(?=###|$)', '', summary_text, flags=re.DOTALL)
+        
+        # Then remove remaining headers
         summary_text = re.sub(r'^#{1,3}\s*Summary\n', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'^#{1,3}\s*', '', summary_text, flags=re.MULTILINE)
+        
         content.append(f"## {summary_text.strip()}")
         content.append("\n")
         
-        # Extract and add Atmosphere section
+        # Add separate sections with proper markdown headers
         atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
         if atmosphere:
             content.append("### Atmosphere")
             content.append(atmosphere + "\n")
         
-        # Extract and add Key Takeaways section
         takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
         if takeaways:
             content.append("### Key Takeaways")
-            content.append(takeaways)
+            content.append(takeaways + "\n")
+            
+        actions = extract_section(conversations_for_day[0][0]['summary'], 'Action Items')
+        if actions:
+            content.append("### Action Items")
+            content.append(actions + "\n")
     
     # Process each conversation
     for conversation, conversation_detail in conversations_for_day:
