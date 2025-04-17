@@ -122,7 +122,7 @@ def generate_markdown(conversations_for_day):
     content = []
     date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
-    content.append(f"# {date_str}")
+    # content.append(f"# {date_str}")
     
     # Main summary - remove Atmosphere and Key Takeaways sections completely
     if conversations_for_day[0][0].get('summary'):
