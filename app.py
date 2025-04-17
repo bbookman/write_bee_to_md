@@ -180,12 +180,21 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
-e    Skip writing files for today's conversations.
+    Skip writing files for today's conversations and for dates that already have files.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
     
     print(f"DEBUG: Writing files to {target_path}")
+    
+    # First, get a list of all existing date files
+    existing_dates = set()
+    for file_path in target_path.glob('*.md'):
+        date_str = file_path.stem  # Gets filename without extension
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):  # Check if it's a date format
+            existing_dates.add(date_str)
+    
+    print(f"DEBUG: Found {len(existing_dates)} existing date files")
     
     page = 1
     daily_conversations = {}
@@ -199,32 +208,54 @@ e    Skip writing files for today's conversations.
             
         print(f"DEBUG: Found {len(response['conversations'])} conversations")
         
+        # Track if we found any new dates to process
+        found_new_dates = False
+        
         for conversation in response['conversations']:
-            conversation_detail = get_conversation_detail(conversation['id'])
-            
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
             conversation_date = start_date.date()
+            date_str = start_date.strftime('%Y-%m-%d')
             
             # Skip if conversation is from today
             if conversation_date >= today:
-                print(f"DEBUG: Skipping today's conversation from {conversation_date}")
+                print(f"DEBUG: Skipping today's conversation from {date_str}")
                 continue
                 
-            date_str = start_date.strftime('%Y-%m-%d')
-            print(f"DEBUG: Processing conversation for date {date_str}")
+            # Skip if we already have a file for this date
+            if date_str in existing_dates:
+                print(f"DEBUG: Skipping existing date {date_str}")
+                continue
+                
+            # If we get here, this is a new date we need to process
+            found_new_dates = True
+            
+            print(f"DEBUG: Processing new conversation for date {date_str}")
+            
+            # Get conversation details only for dates we need
+            conversation_detail = get_conversation_detail(conversation['id'])
             
             if date_str not in daily_conversations:
                 daily_conversations[date_str] = []
             
             daily_conversations[date_str].append((conversation, conversation_detail))
             print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
+        
+        # If we didn't find any new dates on this page, and we've reached the end,
+        # we can stop processing more pages
+        if not found_new_dates:
+            print("DEBUG: No new dates found on this page, checking if we need more pages")
             
+            # If we've processed everything but found no new dates, we can stop
+            if not daily_conversations:
+                print("DEBUG: No new dates to process, stopping")
+                break
+        
         if page >= response.get('totalPages', 0):
             break
             
         page += 1
     
-    # Process collected conversations
+    # Process collected conversations for new dates
     for date_str, conversations in daily_conversations.items():
         print(f"DEBUG: Writing {len(conversations)} conversations for {date_str}")
         conversations.sort(key=lambda x: x[0]['start_time'])
