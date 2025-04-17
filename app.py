@@ -181,6 +181,7 @@ def process_conversations():
     """
     Process all conversations and create markdown files in TARGET_DIR.
     Skip writing files for today's conversations and for dates that already have files.
+    Since API returns conversations in descending date order, stop once we hit an existing date.
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -196,64 +197,50 @@ def process_conversations():
     
     print(f"DEBUG: Found {len(existing_dates)} existing date files")
     
+    # Get only the first page of conversations (newest first)
     page = 1
     daily_conversations = {}
     today = datetime.now().date()
     
-    while True:
-        response = get_bee_conversations(page)
+    response = get_bee_conversations(page)
+    
+    if not response.get('conversations'):
+        print("DEBUG: No conversations found")
+        return
         
-        if not response.get('conversations'):
+    print(f"DEBUG: Found {len(response['conversations'])} conversations")
+    
+    # Keep track if we need to check more pages
+    need_more_pages = True
+    
+    # Process conversations (newest first)
+    for conversation in response['conversations']:
+        start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
+        conversation_date = start_date.date()
+        date_str = start_date.strftime('%Y-%m-%d')
+        
+        # Skip if conversation is from today
+        if conversation_date >= today:
+            print(f"DEBUG: Skipping today's conversation from {date_str}")
+            continue
+            
+        # If we encounter a date that already has a file, we can stop processing
+        # This works because conversations are returned newest first
+        if date_str in existing_dates:
+            print(f"DEBUG: Found existing date {date_str}, stopping processing")
+            need_more_pages = False
             break
             
-        print(f"DEBUG: Found {len(response['conversations'])} conversations")
+        print(f"DEBUG: Processing new conversation for date {date_str}")
         
-        # Track if we found any new dates to process
-        found_new_dates = False
+        # Get conversation details only for dates we need
+        conversation_detail = get_conversation_detail(conversation['id'])
         
-        for conversation in response['conversations']:
-            start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
-            conversation_date = start_date.date()
-            date_str = start_date.strftime('%Y-%m-%d')
-            
-            # Skip if conversation is from today
-            if conversation_date >= today:
-                print(f"DEBUG: Skipping today's conversation from {date_str}")
-                continue
-                
-            # Skip if we already have a file for this date
-            if date_str in existing_dates:
-                print(f"DEBUG: Skipping existing date {date_str}")
-                continue
-                
-            # If we get here, this is a new date we need to process
-            found_new_dates = True
-            
-            print(f"DEBUG: Processing new conversation for date {date_str}")
-            
-            # Get conversation details only for dates we need
-            conversation_detail = get_conversation_detail(conversation['id'])
-            
-            if date_str not in daily_conversations:
-                daily_conversations[date_str] = []
-            
-            daily_conversations[date_str].append((conversation, conversation_detail))
-            print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
+        if date_str not in daily_conversations:
+            daily_conversations[date_str] = []
         
-        # If we didn't find any new dates on this page, and we've reached the end,
-        # we can stop processing more pages
-        if not found_new_dates:
-            print("DEBUG: No new dates found on this page, checking if we need more pages")
-            
-            # If we've processed everything but found no new dates, we can stop
-            if not daily_conversations:
-                print("DEBUG: No new dates to process, stopping")
-                break
-        
-        if page >= response.get('totalPages', 0):
-            break
-            
-        page += 1
+        daily_conversations[date_str].append((conversation, conversation_detail))
+        print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
     
     # Process collected conversations for new dates
     for date_str, conversations in daily_conversations.items():
