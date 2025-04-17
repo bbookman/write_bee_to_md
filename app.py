@@ -240,22 +240,10 @@ e    Skip writing files for today's conversations.
         print(f"Created markdown file: {output_file}")
 
 if __name__ == "__main__":
-    INTERVAL = 6 * 60 * 60  # 6 hours in seconds
-    
-    while True:
-        try:
-            print(f"\nDEBUG: Starting conversation processing at {datetime.now()}")
-            process_conversations()
-            
-            next_run = datetime.now() + timedelta(seconds=INTERVAL)
-            print(f"DEBUG: Next run scheduled for {next_run}")
-            
-            time.sleep(INTERVAL)
-            
-        except KeyboardInterrupt:
-            print("\nShutting down gracefully...")
-            break
-        except Exception as e:
-            print(f"Failed to process conversations: {e}")
-            # Wait 5 minutes before retrying on error
-            time.sleep(300)
+    try:
+        print(f"\nDEBUG: Starting conversation processing at {datetime.now()}")
+        process_conversations()
+    except KeyboardInterrupt:
+        print("\nShutting down gracefully...")
+    except Exception as e:
+        print(f"Failed to process conversations: {e}")
