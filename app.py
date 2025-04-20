@@ -1,5 +1,5 @@
 import requests
-from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR, PAGES_TO_GET
+from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
@@ -145,53 +145,69 @@ def generate_markdown(conversations_for_day):
         extracted = extract_section(text, section_name)
         return extracted if extracted else None
     
-    # Extract main summary and clean it
-    main_summary = conversations_for_day[0][0].get('summary')
-    if main_summary:
-        # Remove any existing section headers to avoid duplicates
-        main_summary = re.sub(r'(?:#{1,3}\s*)?(Atmosphere|Key\s*Take\s*[aA]ways|Action\s*Items)\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', main_summary, flags=re.MULTILINE | re.IGNORECASE)
-        main_summary = re.sub(r'^\s*[-*•]\s+.*$', '', main_summary, flags=re.MULTILINE)
-        main_summary = re.sub(r'\n{3,}', '\n\n', main_summary)
-        content.append(f"# {main_summary.strip()}")
+    # Add daily summary section only if present in first conversation
+    if conversations_for_day[0][0].get('summary'):
+        summary_text = conversations_for_day[0][0]['summary']
+        
+        # First remove sections we'll add separately
+        summary_text = re.sub(r'(?:#{1,3}\s*)?Atmosphere\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE)
+        summary_text = re.sub(r'(?:#{1,3}\s*)?Key\s*Take?\s*[aA]ways\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE | re.IGNORECASE)
+        summary_text = re.sub(r'(?:#{1,3}\s*)?Action\s*Items\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE)
+        
+        # Clean up remaining headers
+        summary_text = re.sub(r'^#{1,3}\s*Summary\s*\n', '', summary_text, flags=re.MULTILINE)
+        summary_text = re.sub(r'^#{1,3}\s*', '', summary_text, flags=re.MULTILINE)
+        
+        # Remove any bullet point lists in the main summary
+        summary_text = re.sub(r'^\s*[-*•]\s+.*$', '', summary_text, flags=re.MULTILINE)
+        summary_text = re.sub(r'\n{3,}', '\n\n', summary_text)
+        
+        content.append(f"# {summary_text.strip()}")
         content.append("\n")
+        
+        # Add sections with proper markdown headers
+        atmosphere = safe_extract(conversations_for_day[0][0]['summary'], 'Atmosphere')
+        if atmosphere:
+            content.append("## Atmosphere")
+            content.append(atmosphere + "\n")
+        
+        key_takeaways = safe_extract(conversations_for_day[0][0]['summary'], 'Key Takeaways')
+        if key_takeaways and key_takeaways.strip():
+            content.append("## Key Takeaways")
+            content.append(key_takeaways.strip())
+            content.append("\n")
+        
+        action_items = safe_extract(conversations_for_day[0][0]['summary'], 'Action Items')
+        if action_items:
+            content.append("### Action Items")
+            content.append(action_items + "\n")
     
-    # Extract and add Atmosphere section
-    atmosphere = safe_extract(conversations_for_day[0][0]['summary'], 'Atmosphere')
-    if atmosphere:
-        content.append("## Atmosphere")
-        content.append(atmosphere + "\n")
+    # Process ALL conversations for this day
+    content.append("## Conversations")
+    content.append("")
     
-    # Extract and add Key Takeaways section
-    key_takeaways = safe_extract(conversations_for_day[0][0]['summary'], 'Key Takeaways')
-    if key_takeaways and key_takeaways.strip():
-        content.append("## Key Takeaways")
-        content.append(key_takeaways.strip())
-        content.append("\n")
-    
-    # Extract and add Action Items section
-    action_items = safe_extract(conversations_for_day[0][0]['summary'], 'Action Items')
-    if action_items:
-        content.append("### Action Items")
-        content.append(action_items + "\n")
-    
-    # Process each conversation
-    for conversation, conversation_detail in conversations_for_day:
-        content.append("\nConversation ID: " + str(conversation['id']))
+    for i, (conversation, conversation_detail) in enumerate(conversations_for_day):
+        # Add separator between conversations
+        if i > 0:
+            content.append("\n---\n")
+            
+        content.append(f"### Conversation {i+1} (ID: {conversation['id']})")
+        
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
-            content.append("Location: " + conversation['primary_location']['address'] + "\n")
+            content.append(f"**Location**: {conversation['primary_location']['address']}\n")
         
-        # Add ### header to short_summary
-        short_summary = conversation.get('short_summary')
-        if short_summary:
-            content.append(f"### {clean_bee_text(short_summary)}")
+        # Add short_summary if available
+        if conversation.get('short_summary'):
+            content.append(f"**Summary**: {clean_bee_text(conversation['short_summary'])}\n")
         
+        # Add transcript
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
         if transcriptions and transcriptions[0].get('utterances'):
-            content.append("### Transcript")
+            content.append("#### Transcript")
             for utterance in transcriptions[0]['utterances']:
                 if utterance.get('text') and utterance.get('speaker'):
-                    content.append("Speaker " + str(utterance['speaker']) + ": " + utterance['text'])
+                    content.append(f"**Speaker {utterance['speaker']}**: {utterance['text']}")
     
     return "\n".join(content)
 
@@ -294,14 +310,8 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 
 def process_conversations():
     """
-<<<<<<< HEAD
-    Process all conversations and create markdown files in TARGET_DIR.
-    Skip writing files for today's conversations.
-    Only process the number of pages specified in PAGES_TO_GET.
-=======
     Process all conversations and create markdown files for missing dates.
     Skip today's conversations and only process dates that don't have files.
->>>>>>> development
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
@@ -315,9 +325,6 @@ def process_conversations():
         if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
             existing_dates.add(date_str)
     
-<<<<<<< HEAD
-    while page <= PAGES_TO_GET:  # Only get specified number of pages
-=======
     # Get conversations to find date range
     response = get_bee_conversations(1)
     if not response.get('conversations'):
@@ -335,20 +342,11 @@ def process_conversations():
     
     # Process pages until we've found all missing dates or reached the end
     while True:
->>>>>>> development
         response = get_bee_conversations(page)
-        print(f"DEBUG: Processing page {page} of {PAGES_TO_GET}")
         
         if not response.get('conversations'):
-<<<<<<< HEAD
-            print("DEBUG: No conversations found in response")
-            break
-        
-        print(f"DEBUG: Found {len(response['conversations'])} conversations")
-=======
             print(f"DEBUG: No conversations found on page {page}")
             break
->>>>>>> development
         
         print(f"DEBUG: Processing page {page} of {response.get('totalPages', 1)}")
         
@@ -369,21 +367,14 @@ def process_conversations():
                 daily_conversations[date_str] = []
             
             daily_conversations[date_str].append((conversation, conversation_detail))
-<<<<<<< HEAD
-            print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
-            
-        # Stop if we've reached the total pages or our PAGES_TO_GET limit
-        if page >= response.get('totalPages', 0) or page >= PAGES_TO_GET:
-            print(f"DEBUG: Reached page limit ({page}/{PAGES_TO_GET})")
-=======
             print(f"DEBUG: Added conversation {conversation['id']} for {date_str}")
         
-        # If we've processed all pages, stop
+        # Check if we've processed all pages - FIXED indentation here
         if page >= response.get('totalPages', 1):
             print(f"DEBUG: Reached the last page ({page})")
->>>>>>> development
             break
             
+        # Increment page counter - FIXED indentation here
         page += 1
     
     # Process collected conversations
