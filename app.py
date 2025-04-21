@@ -16,19 +16,23 @@ def get_bee_conversations(page=1):
     
     endpoint = f"{BEE_API_ENDPOINT}/me/conversations"
     params = {"page": page}
-    
+    ''''''
     print(f"\nDEBUG: Making request to {endpoint}")
     print(f"DEBUG: Headers: {headers}")
     print(f"DEBUG: Params: {params}")
-    
+    ''''''
+
     try:
         response = requests.get(endpoint, headers=headers, params=params)
+        ''''''
         print(f"DEBUG: Response status: {response.status_code}")
         print(f"DEBUG: Response URL: {response.url}")
+        ''''''
         response.raise_for_status()
         data = response.json()
+        ''''''
         print(f"DEBUG: Got {len(data.get('conversations', []))} conversations")
-        return data
+        ''''''
     except requests.RequestException as e:
         print(f"ERROR: API request failed: {e}")
         print(f"DEBUG: Response content: {getattr(e.response, 'text', 'No response content')}")
@@ -45,7 +49,7 @@ def get_conversation_detail(conversation_id):
     
     endpoint = f"{BEE_API_ENDPOINT}/me/conversations/{conversation_id}"
     
-    print(f"\nDEBUG: Getting conversation detail from {endpoint}")
+    # print(f"\nDEBUG: Getting conversation detail from {endpoint}")
     
     try:
         response = requests.get(endpoint, headers=headers)
@@ -76,7 +80,8 @@ def clean_bee_text(text):
         ('Summary:\n', ''),
         ('## Bruce\'s Memory Summary\n', ''),
         ('**Summary:**', ''),
-        ('**Summary:** ', '')
+        ('Summary:', ''),
+
     ]
     
     for old, new in replacements:
@@ -186,22 +191,21 @@ def generate_markdown(conversations_for_day):
             content.append(action_items + "\n")
     
     # Process ALL conversations for this day
+    ''''''
     content.append("## Conversations")
     content.append("")
+    ''''''
     
     for i, (conversation, conversation_detail) in enumerate(conversations_for_day):
-        # Add separator between conversations
-        if i > 0:
-            content.append("\n---\n")
             
-        content.append(f"**Conversation {i+1} (ID: {conversation['id']})**")
+        content.append(f"Conversation {i+1} (ID: {conversation['id']})")
         
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
             content.append(f"Location: {conversation['primary_location']['address']}\n")
         
         # Add short_summary if available
         if conversation.get('short_summary'):
-            content.append(f"**Summary**: {clean_bee_text(conversation['short_summary'])}\n")
+            content.append(f"{clean_bee_text(conversation['short_summary'])}\n")
         
         # Add transcript
         conversation_data = conversation_detail.get('conversation', {})
