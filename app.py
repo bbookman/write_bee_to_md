@@ -144,11 +144,6 @@ def generate_markdown(conversations_for_day):
     content.append("# Daily Summary")
     content.append("")
     
-    # Function to safely extract content, handling None
-    def safe_extract(text, section_name):
-        extracted = extract_section(text, section_name)
-        return extracted if extracted else None
-    
     # Extract sections and add the summary content
     if conversations_for_day[0][0].get('summary'):
         summary_text = conversations_for_day[0][0]['summary']
@@ -158,6 +153,9 @@ def generate_markdown(conversations_for_day):
         summary_text = re.sub(r'(?:#{1,3}\s*)?Key\s*Take?\s*[aA]ways\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE | re.IGNORECASE)
         summary_text = re.sub(r'(?:#{1,3}\s*)?Action\s*Items\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE)
         
+        # Remove any "Summary:" prefix that might be in the text
+        summary_text = re.sub(r'^Summary:\s*', '', summary_text, flags=re.MULTILINE)
+        
         # Clean up remaining headers
         summary_text = re.sub(r'^#{1,3}\s*Summary\s*\n', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'^#{1,3}\s*', '', summary_text, flags=re.MULTILINE)
@@ -166,23 +164,23 @@ def generate_markdown(conversations_for_day):
         summary_text = re.sub(r'^\s*[-*•]\s+.*$', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'\n{3,}', '\n\n', summary_text)
         
-        # Add the cleaned summary content (without a heading)
+        # Add the cleaned summary content directly (without "Summary:" prefix)
         content.append(summary_text.strip())
         content.append("")
         
         # Add sections with proper markdown headers
-        atmosphere = safe_extract(conversations_for_day[0][0]['summary'], 'Atmosphere')
+        atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
         if atmosphere:
             content.append("## Atmosphere")
             content.append(atmosphere + "\n")
         
-        key_takeaways = safe_extract(conversations_for_day[0][0]['summary'], 'Key Takeaways')
+        key_takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
         if key_takeaways and key_takeaways.strip():
             content.append("## Key Takeaways")
             content.append(key_takeaways.strip())
             content.append("\n")
         
-        action_items = safe_extract(conversations_for_day[0][0]['summary'], 'Action Items')
+        action_items = extract_section(conversations_for_day[0][0]['summary'], 'Action Items')
         if action_items:
             content.append("## Action Items")
             content.append(action_items + "\n")
