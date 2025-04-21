@@ -140,16 +140,20 @@ def generate_markdown(conversations_for_day):
     content = []
     date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
+    # Add the "Daily Summary" heading at the beginning
+    content.append("# Daily Summary")
+    content.append("")
+    
     # Function to safely extract content, handling None
     def safe_extract(text, section_name):
         extracted = extract_section(text, section_name)
         return extracted if extracted else None
     
-    # Add daily summary section only if present in first conversation
+    # Extract sections and add the summary content
     if conversations_for_day[0][0].get('summary'):
         summary_text = conversations_for_day[0][0]['summary']
         
-        # First remove sections we'll add separately
+        # Clean up the summary text (removing sections we'll add separately)
         summary_text = re.sub(r'(?:#{1,3}\s*)?Atmosphere\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'(?:#{1,3}\s*)?Key\s*Take?\s*[aA]ways\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE | re.IGNORECASE)
         summary_text = re.sub(r'(?:#{1,3}\s*)?Action\s*Items\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE)
@@ -162,8 +166,9 @@ def generate_markdown(conversations_for_day):
         summary_text = re.sub(r'^\s*[-*•]\s+.*$', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'\n{3,}', '\n\n', summary_text)
         
-        content.append(f"# {summary_text.strip()}")
-        content.append("\n")
+        # Add the cleaned summary content (without a heading)
+        content.append(summary_text.strip())
+        content.append("")
         
         # Add sections with proper markdown headers
         atmosphere = safe_extract(conversations_for_day[0][0]['summary'], 'Atmosphere')
@@ -179,7 +184,7 @@ def generate_markdown(conversations_for_day):
         
         action_items = safe_extract(conversations_for_day[0][0]['summary'], 'Action Items')
         if action_items:
-            content.append("### Action Items")
+            content.append("## Action Items")
             content.append(action_items + "\n")
     
     # Process ALL conversations for this day
@@ -191,10 +196,10 @@ def generate_markdown(conversations_for_day):
         if i > 0:
             content.append("\n---\n")
             
-        content.append(f"### Conversation {i+1} (ID: {conversation['id']})")
+        content.append(f"**Conversation {i+1} (ID: {conversation['id']})**")
         
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
-            content.append(f"**Location**: {conversation['primary_location']['address']}\n")
+            content.append(f"Location: {conversation['primary_location']['address']}\n")
         
         # Add short_summary if available
         if conversation.get('short_summary'):
