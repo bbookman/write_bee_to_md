@@ -1,32 +1,9 @@
 import requests
-from config import BEE_API_ENDPOINT, TARGET_DIR  # Removed BEE_API_KEY
+from config import BEE_API_ENDPOINT, TARGET_DIR
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
-import time
-import getpass  # Added for secure password input
-import json  # Added for JSON handling
-
-def write_json_to_file(data, prefix=''):
-    """
-    Write the JSON data to a text file.
-    
-    Args:
-        data: The JSON data to write
-        prefix: Optional prefix to add to the line for identifying different API calls
-    """
-    file_path = Path("return_json.txt")
-    
-    # Create or append to the file
-    mode = "a" if file_path.exists() else "w"
-    
-    with open(file_path, mode, encoding='utf-8') as f:
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        f.write(f"\n\n--- {prefix} Response at {timestamp} ---\n")
-        f.write(json.dumps(data, indent=2))
-        f.write("\n")
-    
-    print(f"DEBUG: Wrote {prefix} JSON data to {file_path}")
+import getpass
 
 def get_api_key(max_attempts=3):
     """
@@ -129,9 +106,6 @@ def get_bee_conversations(page=1):
         response.raise_for_status()
         data = response.json()
         
-        # Write JSON response to file
-        write_json_to_file(data, f"Conversations_Page_{page}")
-        
         print(f"DEBUG: Got {len(data.get('conversations', []))} conversations")
         return data
     except requests.RequestException as e:
@@ -163,9 +137,6 @@ def get_conversation_detail(conversation_id):
         print(f"DEBUG: Detail response status: {response.status_code}")
         response.raise_for_status()
         data = response.json()
-        
-        # Write JSON response to file
-        write_json_to_file(data, f"Conversation_Detail_{conversation_id}")
         
         transcriptions = data.get('conversation', {}).get('transcriptions', [])
         if transcriptions:
@@ -578,9 +549,6 @@ def get_bee_facts(page=1):
         response.raise_for_status()
         data = response.json()
         
-        # Write JSON response to file
-        write_json_to_file(data, f"Facts_Page_{page}")
-        
         print(f"DEBUG: Got {len(data.get('facts', []))} facts")
         return data
     except requests.RequestException as e:
@@ -709,12 +677,6 @@ def process_facts():
 
 if __name__ == "__main__":
     try:
-        # Delete the return_json.txt file if it exists
-        json_file = Path("return_json.txt")
-        if json_file.exists():
-            json_file.unlink()
-            print(f"DEBUG: Deleted existing {json_file}")
-        
         print(f"\nDEBUG: Starting processing at {datetime.now()}")
         
         # Get API key securely from user
