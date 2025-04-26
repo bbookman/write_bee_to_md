@@ -422,6 +422,12 @@ def process_conversations():
     
     print(f"DEBUG: Found {len(existing_dates)} existing date files")
     
+    # If we already have files for all days up to yesterday, there's nothing to do
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    if yesterday in existing_dates:
+        print(f"DEBUG: Already have file for yesterday ({yesterday}), nothing to process")
+        return False
+    
     # Track which dates we've seen in the API responses
     seen_dates = set()
     daily_conversations = {}
@@ -463,20 +469,14 @@ def process_conversations():
             daily_conversations[date_str].append((conversation, conversation_detail))
             print(f"DEBUG: Added conversation {conversation['id']} for {date_str}")
         
-        # If we didn't find any new dates on this page, check if we need to continue
+        # If we didn't find any new dates on this page, we can stop processing
         if not new_dates_on_this_page:
-            print(f"DEBUG: No new dates found on page {page}")
+            print(f"DEBUG: No new dates found on page {page}, stopping pagination")
+            break
             
-            # If we've reached the last page or we've processed everything up to yesterday
-            if page >= response.get('totalPages', 1):
-                print(f"DEBUG: Reached the last page ({page})")
-                all_needed_files_written = True
-                break
-        
         # Check if we've processed all pages
         if page >= response.get('totalPages', 1):
             print(f"DEBUG: Reached the last page ({page})")
-            all_needed_files_written = True
             break
             
         # Increment page counter
