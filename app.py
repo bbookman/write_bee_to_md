@@ -128,7 +128,8 @@ def get_conversation_detail(conversation_id):
     except requests.RequestException as e:
         print(f"ERROR: Failed to get conversation detail: {e}")
         print(f"DEBUG: Response content: {getattr(e.response, 'text', 'No response content')}")
-        raise
+        # Return empty dict instead of None to avoid NoneType errors
+        return {"conversation": {}}
 
 def clean_bee_text(text):
     """
