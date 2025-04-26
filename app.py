@@ -123,6 +123,12 @@ def get_bee_conversations(page=1):
 def get_conversation_detail(conversation_id):
     """
     Get detailed conversation data including text and speaker information.
+    
+    Args:
+        conversation_id: The ID of the specific conversation to fetch
+        
+    Returns:
+        dict: Conversation details or an empty structure if request fails
     """
     global BEE_API_KEY
     
@@ -132,8 +138,6 @@ def get_conversation_detail(conversation_id):
     }
     
     endpoint = f"{BEE_API_ENDPOINT}/me/conversations/{conversation_id}"
-    
-    # print(f"\nDEBUG: Getting conversation detail from {endpoint}")
     
     try:
         response = requests.get(endpoint, headers=headers)
@@ -156,6 +160,12 @@ def get_conversation_detail(conversation_id):
         print(f"ERROR: Failed to get conversation detail: {e}")
         print(f"DEBUG: Response content: {getattr(e.response, 'text', 'No response content')}")
         # Return empty dict instead of None to avoid NoneType errors
+        return {"conversation": {}}
+    except ValueError as e:
+        print(f"ERROR: Failed to parse JSON response: {e}")
+        return {"conversation": {}}
+    except Exception as e:
+        print(f"ERROR: Unexpected error in get_conversation_detail: {e}")
         return {"conversation": {}}
 
 def clean_bee_text(text):
@@ -507,6 +517,12 @@ def process_conversations():
 def get_bee_facts(page=1):
     """
     Send a request to the Bee API to get confirmed facts with paging.
+    
+    Args:
+        page (int): The page number to request
+        
+    Returns:
+        dict: JSON response containing facts or empty structure if request fails
     """
     global BEE_API_KEY
     
@@ -538,87 +554,114 @@ def get_bee_facts(page=1):
         print(f"ERROR: API request failed: {e}")
         print(f"DEBUG: Response content: {getattr(e.response, 'text', 'No response content')}")
         return {"facts": []}
+    except ValueError as e:
+        print(f"ERROR: Failed to parse JSON response: {e}")
+        return {"facts": []}
+    except Exception as e:
+        print(f"ERROR: Unexpected error in get_bee_facts: {e}")
+        return {"facts": []}
 
 def process_facts():
     """
     Process facts from the Bee API and insert them into the appropriate markdown files.
     Facts are grouped by date and inserted after the "## Action Items" section.
+    
+    Returns:
+        int: Number of files updated with facts
     """
     target_path = Path(TARGET_DIR)
     facts_by_date = {}
     page = 1
+    files_updated = 0
     
-    while True:
-        response = get_bee_facts(page)
-        
-        if not response.get('facts'):
-            print("DEBUG: No facts found")
-            break
+    try:
+        while True:
+            response = get_bee_facts(page)
             
-        print(f"DEBUG: Processing {len(response['facts'])} facts from page {page}")
+            if not response.get('facts'):
+                print("DEBUG: No facts found")
+                break
+                
+            print(f"DEBUG: Processing {len(response['facts'])} facts from page {page}")
+            
+            # Group facts by date
+            for fact in response['facts']:
+                created_at = fact.get('created_at')
+                if not created_at:
+                    continue
+                    
+                try:
+                    # Handle potential date format issues
+                    date_str = datetime.fromisoformat(created_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                    
+                    if date_str not in facts_by_date:
+                        facts_by_date[date_str] = []
+                        
+                    facts_by_date[date_str].append(fact)
+                except ValueError as e:
+                    print(f"ERROR: Invalid date format in fact {fact.get('id')}: {e}")
+                    continue
+            
+            # Check if we've processed all pages
+            if page >= response.get('totalPages', 0):
+                break
+                
+            page += 1
         
-        # Group facts by date
-        for fact in response['facts']:
-            created_at = fact.get('created_at')
-            if not created_at:
+        # Insert facts into matching markdown files
+        for date_str, facts in facts_by_date.items():
+            file_path = target_path / f"{date_str}.md"
+            
+            if not file_path.exists():
+                print(f"DEBUG: No markdown file for {date_str}")
                 continue
                 
-            date_str = datetime.fromisoformat(created_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
-            
-            if date_str not in facts_by_date:
-                facts_by_date[date_str] = []
+            try:
+                # Read the file content
+                content = file_path.read_text(encoding='utf-8')
                 
-            facts_by_date[date_str].append(fact)
-        
-        # Check if we've processed all pages
-        if page >= response.get('totalPages', 0):
-            break
-            
-        page += 1
-    
-    # Insert facts into matching markdown files
-    for date_str, facts in facts_by_date.items():
-        file_path = target_path / f"{date_str}.md"
-        
-        if not file_path.exists():
-            print(f"DEBUG: No markdown file for {date_str}")
-            continue
-            
-        # Read the file content
-        content = file_path.read_text(encoding='utf-8')
-        
-        # Check if we've already added facts
-        if "### Facts" in content:
-            print(f"DEBUG: Facts already added to {file_path}")
-            continue
-        
-        # Create facts section
-        facts_section = "\n### Facts\n"
-        for fact in facts:
-            facts_section += f"* {fact['text']}\n"
-        
-        # Find the appropriate insertion point (after Action Items or at the end)
-        action_items_pattern = r"## Action Items\n[\s\S]*?(?=\n## |\n\nConversation|\Z)"
-        match = re.search(action_items_pattern, content)
-        
-        if match:
-            # Insert after Action Items
-            insertion_point = match.end()
-            updated_content = content[:insertion_point] + facts_section + content[insertion_point:]
-        else:
-            # No Action Items section, insert before the first conversation
-            conversation_pattern = r"\n## Conversations"
-            match = re.search(conversation_pattern, content)
-            if match:
-                insertion_point = match.start()
-                updated_content = content[:insertion_point] + facts_section + content[insertion_point:]
-            else:
-                # Just append at the end
-                updated_content = content + "\n" + facts_section
-        
-        # Write the updated content back to the file
-        file_path.write_text(updated_content, encoding='utf-8')
-        print(f"DEBUG: Added {len(facts)} facts to {file_path}")
+                # Check if we've already added facts
+                if "### Facts" in content:
+                    print(f"DEBUG: Facts already added to {file_path}")
+                    continue
+                
+                # Create facts section
+                facts_section = "\n### Facts\n"
+                for fact in facts:
+                    facts_section += f"* {fact['text']}\n"
+                
+                # Find the appropriate insertion point (after Action Items or at the end)
+                action_items_pattern = r"## Action Items\n[\s\S]*?(?=\n## |\n\nConversation|\Z)"
+                match = re.search(action_items_pattern, content)
+                
+                if match:
+                    # Insert after Action Items
+                    insertion_point = match.end()
+                    updated_content = content[:insertion_point] + facts_section + content[insertion_point:]
+                else:
+                    # No Action Items section, insert before the first conversation
+                    conversation_pattern = r"\n## Conversations"
+                    match = re.search(conversation_pattern, content)
+                    if match:
+                        insertion_point = match.start()
+                        updated_content = content[:insertion_point] + facts_section + content[insertion_point:]
+                    else:
+                        # Just append at the end
+                        updated_content = content + "\n" + facts_section
+                
+                # Write the updated content back to the file
+                file_path.write_text(updated_content, encoding='utf-8')
+                print(f"DEBUG: Added {len(facts)} facts to {file_path}")
+                files_updated += 1
+            except Exception as e:
+                print(f"ERROR: Failed to update file {file_path}: {e}")
+                continue
+                
+        return files_updated
+                
+    except Exception as e:
+        print(f"ERROR: Unexpected error in process_facts: {e}")
+        return files_updated
 
 if __name__ == "__main__":
     try:
@@ -628,19 +671,38 @@ if __name__ == "__main__":
             json_file.unlink()
             print(f"DEBUG: Deleted existing {json_file}")
         
-        print(f"\nDEBUG: Starting conversation processing at {datetime.now()}")
-        BEE_API_KEY = get_api_key()  # Get API key from user
-        print("API key received. Beginning processing...")
+        print(f"\nDEBUG: Starting processing at {datetime.now()}")
+        
+        # Get API key securely from user
+        try:
+            BEE_API_KEY = get_api_key()
+            print("API key received. Beginning processing...")
+        except ValueError as e:
+            print(f"ERROR: {e}")
+            print("Exiting due to API key issue.")
+            exit(1)
         
         # Process conversations first
-        process_conversations()
+        print(f"\nDEBUG: Starting conversation processing at {datetime.now()}")
+        new_conversations_processed = process_conversations()
         
-        # Then process facts
-        print(f"\nDEBUG: Starting facts processing at {datetime.now()}")
-        process_facts()
+        # Then process facts, but only if we found new conversations or specifically requested
+        if new_conversations_processed:
+            print(f"\nDEBUG: Starting facts processing at {datetime.now()}")
+            files_updated = process_facts()
+            print(f"DEBUG: Updated {files_updated} files with facts")
+        else:
+            print(f"\nDEBUG: No new conversation files created, skipping facts processing")
         
         print(f"\nDEBUG: All processing completed at {datetime.now()}")
+        
     except KeyboardInterrupt:
         print("\nShutting down gracefully...")
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: API request failed: {e}")
+        print(f"Check your internet connection and API endpoint configuration.")
     except Exception as e:
         print(f"Failed to process: {e}")
+        # In a production environment, you might want to log the full traceback
+        import traceback
+        traceback.print_exc()
