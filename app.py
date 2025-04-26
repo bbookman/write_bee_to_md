@@ -1,14 +1,72 @@
 import requests
-from config import BEE_API_KEY, BEE_API_ENDPOINT, TARGET_DIR
+from config import BEE_API_ENDPOINT, TARGET_DIR  # Removed BEE_API_KEY
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
 import time
+import getpass  # Added for secure password input
+
+def get_api_key(max_attempts=3):
+    print("\n=== Bee API Access ===")
+    print("Please enter your Bee API key.")
+    print("The key will not be displayed as you type for security reasons.")
+    
+    attempts = 0
+    api_key = getpass.getpass("Bee API Key: ")
+    
+    while not api_key:
+        attempts += 1
+        if attempts >= max_attempts:
+            raise ValueError("Maximum attempts reached. Exiting.")
+        
+        print("API key cannot be empty.")
+        api_key = getpass.getpass("Bee API Key: ")
+    
+    return api_key
+
+# Global variable for API key
+BEE_API_KEY = None
+
+class ApiClient:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        
+    def get_conversations(self, page=1):
+        """
+        Send a request to the Bee API to get conversations with paging.
+        """
+        headers = {
+            "accept": "application/json",
+            "x-api-key": self.api_key
+        }
+        
+        endpoint = f"{BEE_API_ENDPOINT}/me/conversations"
+        params = {"page": page}
+        ''''''
+        print(f"\nDEBUG: Making request to {endpoint}")
+        print(f"DEBUG: Headers: {headers}")
+        print(f"DEBUG: Params: {params}")
+        ''''''
+
+        try:
+            response = requests.get(endpoint, headers=headers, params=params)
+            ''''''
+            print(f"DEBUG: Response status: {response.status_code}")
+            print(f"DEBUG: Response URL: {response.url}")
+            ''''''
+            response.raise_for_status()
+            data = response.json()
+            ''''''
+            print(f"DEBUG: Got {len(data.get('conversations', []))} conversations")
+            ''''''
+        except requests.RequestException as e:
+            print(f"ERROR: API request failed: {e}")
+            print(f"DEBUG: Response content: {getattr(e.response, 'text', 'No response content')}")
+            raise
 
 def get_bee_conversations(page=1):
-    """
-    Send a request to the Bee API to get conversations with paging.
-    """
+    global BEE_API_KEY
+    
     headers = {
         "accept": "application/json",
         "x-api-key": BEE_API_KEY
@@ -42,6 +100,8 @@ def get_conversation_detail(conversation_id):
     """
     Get detailed conversation data including text and speaker information.
     """
+    global BEE_API_KEY
+    
     headers = {
         "accept": "application/json",
         "x-api-key": BEE_API_KEY
@@ -402,6 +462,8 @@ def process_conversations():
 if __name__ == "__main__":
     try:
         print(f"\nDEBUG: Starting conversation processing at {datetime.now()}")
+        BEE_API_KEY = get_api_key()  # Get API key from user
+        print("API key received. Beginning processing...")
         process_conversations()
     except KeyboardInterrupt:
         print("\nShutting down gracefully...")
