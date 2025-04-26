@@ -29,6 +29,25 @@ def write_json_to_file(data, prefix=''):
     print(f"DEBUG: Wrote {prefix} JSON data to {file_path}")
 
 def get_api_key(max_attempts=3):
+    """
+    Get the Bee API key from config.py if present, or prompt the user.
+    
+    Args:
+        max_attempts: Maximum number of attempts to get a valid key from user
+        
+    Returns:
+        str: The Bee API key
+    """
+    # First try to get the key from config.py
+    try:
+        from config import BEE_API_KEY
+        if BEE_API_KEY and BEE_API_KEY != "YOUR_BEE_API_KEY":
+            print("Using API key from config.py")
+            return BEE_API_KEY
+    except (ImportError, AttributeError):
+        # If import fails or the attribute doesn't exist, continue to prompt
+        pass
+    
     print("\n=== Bee API Access ===")
     print("Please enter your Bee API key.")
     print("The key will not be displayed as you type for security reasons.")
@@ -417,18 +436,25 @@ def process_conversations():
     """
     Process all conversations and create markdown files for missing dates.
     Skip today's conversations and only process dates that don't have files.
+    Organize files in month folders (e.g., "04-April").
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
     
     print(f"DEBUG: Writing files to {target_path}")
     
-    # Get all existing date files
+    # Get all existing date files across all month directories
     existing_dates = set()
-    for file_path in target_path.glob('*.md'):
-        date_str = file_path.stem
-        if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
-            existing_dates.add(date_str)
+    month_dirs = list(target_path.glob("*-*"))
+    
+    for month_dir in month_dirs:
+        if not month_dir.is_dir():
+            continue
+            
+        for file_path in month_dir.glob('*.md'):
+            date_str = file_path.stem
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+                existing_dates.add(date_str)
     
     print(f"DEBUG: Found {len(existing_dates)} existing date files")
     
@@ -495,7 +521,14 @@ def process_conversations():
     # Process collected conversations
     files_written = 0
     for date_str, conversations in daily_conversations.items():
-        output_file = target_path / f"{date_str}.md"
+        # Create the month directory (format: MM-Month)
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        month_name = date_obj.strftime('%B')
+        month_num = date_obj.strftime('%m')
+        month_dir = target_path / f"{month_num}-{month_name}"
+        month_dir.mkdir(exist_ok=True)
+        
+        output_file = month_dir / f"{date_str}.md"
         
         # Skip if file already exists (double-check to be safe)
         if output_file.exists():
@@ -565,6 +598,7 @@ def process_facts():
     """
     Process facts from the Bee API and insert them into the appropriate markdown files.
     Facts are grouped by date and inserted after the "## Action Items" section.
+    Files are organized in monthly directories (MM-MonthName).
     
     Returns:
         int: Number of files updated with facts
@@ -610,7 +644,17 @@ def process_facts():
         
         # Insert facts into matching markdown files
         for date_str, facts in facts_by_date.items():
-            file_path = target_path / f"{date_str}.md"
+            # Find the file in the monthly directory
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            month_name = date_obj.strftime('%B')
+            month_num = date_obj.strftime('%m')
+            month_dir = target_path / f"{month_num}-{month_name}"
+            
+            if not month_dir.exists():
+                print(f"DEBUG: Month directory not found for {date_str}: {month_dir}")
+                continue
+                
+            file_path = month_dir / f"{date_str}.md"
             
             if not file_path.exists():
                 print(f"DEBUG: No markdown file for {date_str}")

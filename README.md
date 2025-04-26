@@ -7,9 +7,11 @@ This application converts Bee conversations into organized markdown files. It pr
 - Converts Bee conversations into structured markdown files
 - Organizes conversations by date
 - Includes conversation summaries, locations, and transcripts
-- Automatically runs every 6 hours
-- Skips processing of current day's conversations
+- Extracts facts from the Bee API and adds them to relevant markdown files
+- Processes only historical data (up to yesterday)
+- Smart pagination to minimize API calls
 - Avoids overwriting existing files
+- Comprehensive error handling
 
 ## Requirements
 
@@ -19,45 +21,50 @@ This application converts Bee conversations into organized markdown files. It pr
 
 ## Configuration
 
-1. Copy the example configuration:
+1. Create a `config.py` file with the following:
 
 ```python
-BEE_API_KEY = "YOUR_BEE_API_KEY"
+BEE_API_KEY = "YOUR_BEE_API_KEY"  # Optional - can be entered at runtime
 BEE_API_ENDPOINT = "https://api.bee.computer/v1"
 TARGET_DIR = "/path/to/output/directory"
 ```
 
-2. Update `config.py` with your:
-   - Bee API key
-   - Target directory for markdown files
+2. If you don't provide a `BEE_API_KEY` in the config file, the application will prompt you for it at runtime.
 
 ## File Structure
 
 Generated markdown files follow this format:
 
 ```markdown
-# YYYY-MM-DD
+# Daily Summary
 
-## [Daily Summary]
+[main summary content]
 
-### Atmosphere
+## Atmosphere
 
 [atmosphere content]
 
-### Key Takeaways
+## Key Takeaways
 
 [key takeaways content]
 
-### Action Items
+## Action Items
 
 [action items content]
 
-Conversation ID: [id]
+### Facts
+
+- [fact 1]
+- [fact 2]
+- ...
+
+## Conversations
+
+Conversation 1 (ID: [id])
 Location: [address]
 [conversation summary]
 
-### Transcript
-
+Transcript:
 Speaker 1: [text]
 Speaker 2: [text]
 ...
@@ -79,17 +86,17 @@ python3 app.py
 
 The application will:
 
-- Run immediately upon starting
-- Process all historical conversations
+- Prompt for your Bee API key if not found in config.py
+- Process all historical conversations up to yesterday
 - Create markdown files for each day
-- Skip today's conversations
-- Run automatically every 6 hours
-- Continue running until stopped with Ctrl+C
+- Add facts to each day's markdown file
+- Skip processing for dates that already have files
+- Continue processing until all needed files are created
 
-## Notes
+## Usage Notes
 
 - Files are created in the specified TARGET_DIR
-- Only processes conversations from completed days
+- Only processes conversations from completed days (up to yesterday)
 - Existing files will not be overwritten
-- Runs continuously with 6-hour intervals
-- Uses the Bee API v1 endpoint
+- Early termination when all needed files are processed
+- Logs all API responses to a `return_json.txt` file for debugging
