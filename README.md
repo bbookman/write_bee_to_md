@@ -70,18 +70,54 @@ Speaker 2: [text]
 ...
 ```
 
-## Running the Application
+## Directory Structure
 
-1. Install dependencies:
+The application organizes files in the following structure within your TARGET_DIR:
 
-```bash
-pip3 install requests
+```
+TARGET_DIR/
+├── 01-January/
+│   ├── 2025-01-01.md
+│   ├── 2025-01-02.md
+│   └── ...
+├── 02-February/
+│   ├── 2025-02-01.md
+│   └── ...
+├── 03-March/
+│   └── ...
+└── 04-April/
+    ├── 2025-04-01.md
+    ├── 2025-04-02.md
+    └── ...
 ```
 
-2. Run the script:
+Each month gets its own directory with the format `MM-MonthName` (e.g., "04-April"), and each conversation file is named with the ISO date format `YYYY-MM-DD.md`.
+
+## Running the Application
+
+1. Create and activate a Python virtual environment (recommended):
 
 ```bash
-python3 app.py
+# Create a virtual environment
+python3 -m venv myenv
+
+# Activate the virtual environment
+# On macOS/Linux:
+source myenv/bin/activate
+# On Windows:
+# myenv\Scripts\activate
+```
+
+2. Install dependencies:
+
+```bash
+pip install requests
+```
+
+3. Run the script:
+
+```bash
+python app.py
 ```
 
 The application will:
@@ -93,10 +129,15 @@ The application will:
 - Skip processing for dates that already have files
 - Continue processing until all needed files are created
 
+4. When finished, deactivate the virtual environment:
+
+```bash
+deactivate
+```
+
 ## Usage Notes
 
 - Files are created in the specified TARGET_DIR
 - Only processes conversations from completed days (up to yesterday)
 - Existing files will not be overwritten
 - Early termination when all needed files are processed
-- Logs all API responses to a `return_json.txt` file for debugging
