@@ -161,6 +161,7 @@ def get_conversation_detail(conversation_id):
 def clean_bee_text(text):
     """
     Clean text from Bee API responses by removing redundant headers and formatting.
+    Also removes bullet points at the beginning of the text.
     """
     replacements = [
         ('## Summary\n', ''),
@@ -169,11 +170,13 @@ def clean_bee_text(text):
         ('## Bruce\'s Memory Summary\n', ''),
         ('**Summary:**', ''),
         ('Summary:', ''),
-
     ]
     
     for old, new in replacements:
         text = text.replace(old, new)
+    
+    # Remove bullet points at the beginning of the text
+    text = re.sub(r'^[\s\-\*•]+', '', text.strip())
     
     return text.strip()
 
