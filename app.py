@@ -1,9 +1,14 @@
 import requests
-from config import BEE_API_ENDPOINT, TARGET_DIR
+from config import BEE_API_ENDPOINT, TARGET_DIR, FACTS_FILE_PATH
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
 import getpass
+
+# Ensure target directory exists
+Path(TARGET_DIR).mkdir(parents=True, exist_ok=True)
+# Ensure parent directory of facts file exists
+Path(FACTS_FILE_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 def get_api_key(max_attempts=3):
     """
@@ -570,6 +575,8 @@ def process_facts():
     Process facts from the Bee API and insert them into the appropriate markdown files.
     Facts are grouped by date and inserted after the "## Action Items" section.
     Files are organized in monthly directories (MM-MonthName).
+    Only facts created on a specific day are added to that day's markdown file.
+    Additionally, all facts are appended to a single file at FACTS_FILE_PATH as a simple list.
     
     Returns:
         int: Number of files updated with facts
@@ -578,6 +585,7 @@ def process_facts():
     facts_by_date = {}
     page = 1
     files_updated = 0
+    new_facts = []  # Store new facts to append to the single file
     
     try:
         while True:
@@ -589,7 +597,10 @@ def process_facts():
                 
             print(f"DEBUG: Processing {len(response['facts'])} facts from page {page}")
             
-            # Group facts by date
+            # Add all facts to our collection for the single file
+            new_facts.extend(response.get('facts', []))
+            
+            # Group facts by their creation date
             for fact in response['facts']:
                 created_at = fact.get('created_at')
                 if not created_at:
@@ -597,12 +608,14 @@ def process_facts():
                     
                 try:
                     # Handle potential date format issues
-                    date_str = datetime.fromisoformat(created_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                    # Extract just the date portion (YYYY-MM-DD) from the timestamp
+                    fact_date_str = datetime.fromisoformat(created_at.replace('Z', '+00:00')).strftime('%Y-%m-%d')
                     
-                    if date_str not in facts_by_date:
-                        facts_by_date[date_str] = []
+                    if fact_date_str not in facts_by_date:
+                        facts_by_date[fact_date_str] = []
                         
-                    facts_by_date[date_str].append(fact)
+                    facts_by_date[fact_date_str].append(fact)
+                    print(f"DEBUG: Added fact {fact.get('id')} created on {fact_date_str}")
                 except ValueError as e:
                     print(f"ERROR: Invalid date format in fact {fact.get('id')}: {e}")
                     continue
@@ -613,7 +626,31 @@ def process_facts():
                 
             page += 1
         
-        # Insert facts into matching markdown files
+        # Append new facts to the single file
+        if new_facts:
+            try:
+                # Create the facts file if it doesn't exist
+                facts_file = Path(FACTS_FILE_PATH)
+                
+                # Check if the file exists and read its content
+                if facts_file.exists():
+                    existing_content = facts_file.read_text(encoding='utf-8')
+                else:
+                    # Create a new file with a simple header
+                    existing_content = "# Facts\n\n"
+                
+                # Append new facts to the existing content
+                new_content = existing_content
+                for fact in new_facts:
+                    new_content += f"* {fact['text']}\n"
+                
+                # Write to the facts file
+                facts_file.write_text(new_content, encoding='utf-8')
+                print(f"DEBUG: Appended {len(new_facts)} facts to {FACTS_FILE_PATH}")
+            except Exception as e:
+                print(f"ERROR: Failed to write facts to single file: {e}")
+        
+        # Insert facts into matching markdown files - ONLY if the dates match exactly
         for date_str, facts in facts_by_date.items():
             # Find the file in the monthly directory
             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
@@ -666,7 +703,7 @@ def process_facts():
                 
                 # Write the updated content back to the file
                 file_path.write_text(updated_content, encoding='utf-8')
-                print(f"DEBUG: Added {len(facts)} facts to {file_path}")
+                print(f"DEBUG: Added {len(facts)} facts to {file_path} for {date_str}")
                 files_updated += 1
             except Exception as e:
                 print(f"ERROR: Failed to update file {file_path}: {e}")

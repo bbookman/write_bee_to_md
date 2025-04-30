@@ -1,4 +1,6 @@
 BEE_API_KEY = ""
 BEE_API_ENDPOINT = "https://api.bee.computer/v1"
-
-TARGET_DIR = "/Conversations/bee"
+TARGET_DIR = "/Users/brucebookman/bee_test"
+FACTS_FILE_PATH = "/Users/brucebookman/bee_test/facts.md"
+# TARGET_DIR = "/Users/brucebookman/bruce_vault/Conversations/bee"
+# FACTS_FILE_PATH = "/Users/brucebookman/bruce_vault/facts.md"
