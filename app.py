@@ -204,10 +204,14 @@ def extract_section(text, section_name):
     Extract a section from the summary text based on markdown headers.
     Handles various header formats and non-header formats.
     """
-    # Standardize section name handling for all variations of Key Takeaways
+    # Standardize section name handling for all variations
     variations = [section_name]
     if section_name.lower() == "key takeaways":
         variations = ["Key Takeaways", "Key Take Aways", "Key Take aways", "Key Takeaways"]
+    elif section_name.lower() == "atmosphere":
+        variations = ["Atmosphere", "Environment", "Mood", "Setting"]
+    elif section_name.lower() == "action items":
+        variations = ["Action Items", "Actions", "Next Steps", "To-Do"]
     
     # Try all variations with different header levels
     for variation in variations:
@@ -219,17 +223,24 @@ def extract_section(text, section_name):
     
     # Try without any markdown headers
     for variation in variations:
-        pattern = f"{variation}[:\\s]*\n(.*?)(?=\\s*[A-Za-z][A-Za-z\\s]*:\\s*$|\\n\\n|$)"
+        pattern = f"{variation}:\\s*(.*?)(?=\\s*[A-Za-z]+:|$)"
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         if match:
             return match.group(1).strip()
-    
-    # Try bullet-point style lists for Key Takeaways
-    if section_name.lower() == "key takeaways":
-        pattern = r"(?:^|\n)(?:\*|\-|\d+\.)\s+(.+(?:\n(?:\*|\-|\d+\.)\s+.+)*)"
-        match = re.search(pattern, text, re.MULTILINE)
-        if match:
-            return match.group(1).strip()
+            
+    # For Atmosphere specifically, look for descriptive paragraphs if not found with headers
+    if section_name.lower() == "atmosphere":
+        atmosphere_indicators = [
+            r"(?:was|were|had|felt)\s+(?:calm|relaxed|tense|formal|informal|casual|friendly|professional)",
+            r"(?:calm|relaxed|tense|formal|informal|casual|friendly|professional) (?:atmosphere|environment|setting|mood)",
+            r"(?:atmosphere|environment|setting|mood)\s+(?:was|were|had|felt)\s+(?:calm|relaxed|tense|formal|informal|casual|friendly|professional)"
+        ]
+        
+        for indicator in atmosphere_indicators:
+            pattern = f"(?:[^.]+{indicator}[^.]+\\.)"
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                return " ".join(matches)
     
     return ""
 
