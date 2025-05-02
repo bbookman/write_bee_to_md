@@ -201,46 +201,69 @@ def clean_summary(text):
 
 def extract_section(text, section_name):
     """
-    Extract a section from the summary text based on markdown headers.
+    Extract a section from the summary text based on markdown headers or specific text patterns.
     Handles various header formats and non-header formats.
-    """
-    # Standardize section name handling for all variations
-    variations = [section_name]
-    if section_name.lower() == "key takeaways":
-        variations = ["Key Takeaways", "Key Take Aways", "Key Take aways", "Key Takeaways"]
-    elif section_name.lower() == "atmosphere":
-        variations = ["Atmosphere", "Environment", "Mood", "Setting"]
-    elif section_name.lower() == "action items":
-        variations = ["Action Items", "Actions", "Next Steps", "To-Do"]
     
-    # Try all variations with different header levels
-    for variation in variations:
-        for header_level in range(3, 0, -1):
-            pattern = f"{'#' * header_level}\\s*{variation}\\s*\n(.*?)(?=\\s*#{1,3}\\s*[A-Za-z]|$)"
+    Args:
+        text (str): The text to search for sections
+        section_name (str): The name of the section to extract
+        
+    Returns:
+        str: The extracted section content or empty string if not found
+    """
+    # Special case for Atmosphere with more flexible matching
+    if section_name.lower() == "atmosphere":
+        # Try to find any mention of atmosphere with content following it
+        patterns = [
+            r"(?:^|\n)(?:#{1,3}\s*)?Atmosphere:?\s*(.*?)(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)",
+            r"Atmosphere:?\s*(.*?)(?=\n\s*[A-Z]|$)",
+            r"(?:^|\n)The atmosphere\s*(?:was|is)?\s*(.*?)(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)",
+            r"(?:^|\n)(?:The\s*)?mood\s*(?:was|is)?\s*(.*?)(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)"
+        ]
+        
+        for pattern in patterns:
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
             if match:
                 return match.group(1).strip()
     
-    # Try without any markdown headers
-    for variation in variations:
-        pattern = f"{variation}:\\s*(.*?)(?=\\s*[A-Za-z]+:|$)"
+    # Special case for Key Takeaways with various spellings
+    if section_name.lower() == "key takeaways":
+        # Try broader patterns for key takeaways
+        variations = ["Key Takeaways", "Key Take Aways", "Key Take aways", "Takeaways", "Take Aways"]
+        
+        for variation in variations:
+            # Try with different formats
+            patterns = [
+                f"(?:^|\n)(?:#{1,3}\s*)?{variation}:?\s*(.*?)(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)",
+                f"{variation}:?\s*(.*?)(?=\n\s*[A-Z]|$)",
+                f"(?:^|\n)(?:The\s*)?{variation}\s*(?:were|are|included)?\s*(.*?)(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)"
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+                if match:
+                    return match.group(1).strip()
+    
+    # Check for the most direct pattern first: "SectionName: content"
+    pattern = f"{section_name}:\\s*(.*?)(?=\\s*[A-Za-z]+:|$)"
+    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    
+    # Try with markdown headers at different levels
+    for header_level in range(3, 0, -1):
+        pattern = f"{'#' * header_level}\\s*{section_name}\\s*\n(.*?)(?=\\s*#{1,3}\\s*[A-Za-z]|$)"
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         if match:
             return match.group(1).strip()
-            
-    # For Atmosphere specifically, look for descriptive paragraphs if not found with headers
-    if section_name.lower() == "atmosphere":
-        atmosphere_indicators = [
-            r"(?:was|were|had|felt)\s+(?:calm|relaxed|tense|formal|informal|casual|friendly|professional)",
-            r"(?:calm|relaxed|tense|formal|informal|casual|friendly|professional) (?:atmosphere|environment|setting|mood)",
-            r"(?:atmosphere|environment|setting|mood)\s+(?:was|were|had|felt)\s+(?:calm|relaxed|tense|formal|informal|casual|friendly|professional)"
-        ]
-        
-        for indicator in atmosphere_indicators:
-            pattern = f"(?:[^.]+{indicator}[^.]+\\.)"
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                return " ".join(matches)
+    
+    # Special case for Action Items
+    if section_name.lower() == "action items":
+        # Look for "Action Items:" followed by a bullet point list
+        pattern = r"Action\s*Items:?\s*((?:\s*[-*•]\s+.*\n?)+)"
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
     
     return ""
 
@@ -289,19 +312,41 @@ def generate_markdown(conversations_for_day):
         key_takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
         if key_takeaways and key_takeaways.strip():
             content.append("## Key Takeaways")
-            content.append(key_takeaways.strip())
+            # Fix for bullet points: ensure each bullet point is properly formatted
+            # Clean up any leading bullet points that might appear in the first line
+            key_takeaways = key_takeaways.strip()
+            if not key_takeaways.startswith('-') and not key_takeaways.startswith('*') and not key_takeaways.startswith('•'):
+                # If it doesn't already have bullet points, format each line as a bullet point
+                formatted_takeaways = []
+                for line in key_takeaways.split('\n'):
+                    if line.strip():
+                        if not line.strip().startswith('-') and not line.strip().startswith('*') and not line.strip().startswith('•'):
+                            formatted_takeaways.append(f"- {line.strip()}")
+                        else:
+                            formatted_takeaways.append(line.strip())
+                key_takeaways = '\n'.join(formatted_takeaways)
+            content.append(key_takeaways)
             content.append("\n")
         
         action_items = extract_section(conversations_for_day[0][0]['summary'], 'Action Items')
         if action_items:
             content.append("## Action Items")
+            # Similar fix for action items
+            action_items = action_items.strip()
+            if not action_items.startswith('-') and not action_items.startswith('*') and not action_items.startswith('•'):
+                formatted_actions = []
+                for line in action_items.split('\n'):
+                    if line.strip():
+                        if not line.strip().startswith('-') and not line.strip().startswith('*') and not line.strip().startswith('•'):
+                            formatted_actions.append(f"- {line.strip()}")
+                        else:
+                            formatted_actions.append(line.strip())
+                action_items = '\n'.join(formatted_actions)
             content.append(action_items + "\n")
     
     # Process ALL conversations for this day
-    ''''''
     content.append("## Conversations")
     content.append("")
-    ''''''
     
     for i, (conversation, conversation_detail) in enumerate(conversations_for_day):
             
@@ -321,7 +366,7 @@ def generate_markdown(conversations_for_day):
             content.append("#### Transcript")
             for utterance in transcriptions[0]['utterances']:
                 if utterance.get('text') and utterance.get('speaker'):
-                    content.append(f"**Speaker {utterance['speaker']}**: {utterance['text']}")
+                    content.append(f"Speaker {utterance['speaker']}: {utterance['text']}")
     
     return "\n".join(content)
 
@@ -341,6 +386,9 @@ def clean_markdown_content(markdown_content):
     markdown_content = re.sub(r'(?<!\n#)Atmosphere:?\s*', '', markdown_content)
     markdown_content = re.sub(r'(?<!\n#)Action\s*Items:?\s*', '', markdown_content)
     
+    # Fix headers with bullet points (e.g., "## - Bullet point")
+    markdown_content = re.sub(r'(^|\n)(#{1,3})\s+[-*•]\s+', r'\1\2 ', markdown_content)
+    
     lines = markdown_content.split('\n')
     cleaned_lines = []
     seen_headers = set()
@@ -353,6 +401,11 @@ def clean_markdown_content(markdown_content):
         header_match = re.match(r'^(#{1,3})\s+(.*?)$', current_line)
         if header_match:
             level, header_text = header_match.groups()
+            
+            # Remove any bullet points at the start of headers
+            if header_text.startswith('-') or header_text.startswith('*') or header_text.startswith('•'):
+                header_text = re.sub(r'^[\s\-\*•]+', '', header_text)
+                current_line = f"{level} {header_text}"
             
             # Normalize header text for comparison (standardize Key Takeaways variants)
             normalized_header = header_text.lower().replace(" ", "")
@@ -425,7 +478,7 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 def process_conversations():
     """
     Process all conversations and create markdown files for missing dates.
-    Skip today's conversations and only process dates that don't have files.
+    Skip dates that already have files.
     Organize files in month folders (e.g., "04-April").
     """
     target_path = Path(TARGET_DIR)
@@ -448,20 +501,14 @@ def process_conversations():
     
     print(f"DEBUG: Found {len(existing_dates)} existing date files")
     
-    # If we already have files for all days up to yesterday, there's nothing to do
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-    if yesterday in existing_dates:
-        print(f"DEBUG: Already have file for yesterday ({yesterday}), nothing to process")
-        return False
-    
     # Track which dates we've seen in the API responses
     seen_dates = set()
     daily_conversations = {}
     page = 1
     all_needed_files_written = False
     
-    # Process pages until we've found all missing dates or reached the end
-    while not all_needed_files_written:
+    # Process pages until we've reached the end
+    while True:
         response = get_bee_conversations(page)
         
         if not response.get('conversations'):
@@ -470,8 +517,8 @@ def process_conversations():
         
         print(f"DEBUG: Processing page {page} of {response.get('totalPages', 1)}")
         
-        # Track which dates we need to write files for on this page
-        new_dates_on_this_page = set()
+        # Process conversations on this page
+        conversations_processed = 0
         
         # First pass - just collect all date strings to determine range
         for conversation in response['conversations']:
@@ -479,13 +526,12 @@ def process_conversations():
             date_str = start_date.strftime('%Y-%m-%d')
             seen_dates.add(date_str)
             
-            # Skip if it's today or we already have a file
-            if start_date.date() >= datetime.now().date() or date_str in existing_dates:
+            # Skip if we already have a file for this date
+            if date_str in existing_dates:
                 continue
                 
-            # Track that we found a new date on this page
-            new_dates_on_this_page.add(date_str)
-                
+            conversations_processed += 1
+            
             # Get conversation details and add to daily collection
             conversation_detail = get_conversation_detail(conversation['id'])
             
@@ -495,11 +541,8 @@ def process_conversations():
             daily_conversations[date_str].append((conversation, conversation_detail))
             print(f"DEBUG: Added conversation {conversation['id']} for {date_str}")
         
-        # If we didn't find any new dates on this page, we can stop processing
-        if not new_dates_on_this_page:
-            print(f"DEBUG: No new dates found on page {page}, stopping pagination")
-            break
-            
+        print(f"DEBUG: Processed {conversations_processed} conversations on page {page}")
+        
         # Check if we've processed all pages
         if page >= response.get('totalPages', 1):
             print(f"DEBUG: Reached the last page ({page})")
