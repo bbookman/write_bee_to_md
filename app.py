@@ -211,6 +211,10 @@ def extract_section(text, section_name):
     Returns:
         str: The extracted section content or empty string if not found
     """
+    # First check for None or empty text
+    if text is None or not text.strip():
+        return ""
+        
     # Special case for Atmosphere with more flexible matching
     if section_name.lower() == "atmosphere":
         # Try to find any mention of atmosphere with content following it
@@ -223,13 +227,13 @@ def extract_section(text, section_name):
         
         for pattern in patterns:
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-            if match:
+            if match and match.group(1):  # Add check for None
                 return match.group(1).strip()
     
     # Special case for Key Takeaways with various spellings
     if section_name.lower() == "key takeaways":
         # Try broader patterns for key takeaways
-        variations = ["Key Takeaways", "Key Take Aways", "Key Take aways", "Takeaways", "Take Aways"]
+        variations = ["Key Takeaways", "Key Take Aways", "Key Take aways", "Takeaways", "Take Aways", "Key Points"]
         
         for variation in variations:
             # Try with different formats
@@ -241,20 +245,25 @@ def extract_section(text, section_name):
             
             for pattern in patterns:
                 match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-                if match:
+                if match and match.group(1):  # Add check for None
                     return match.group(1).strip()
+                    
+        # If we get here, check for bullet points that might be takeaways
+        bullet_list = re.findall(r'(?:^|\n)\s*[-*•]\s+(.*?)(?=\n\s*[-*•]|\n\s*\n|$)', text, re.DOTALL)
+        if bullet_list:
+            return '\n'.join([f"- {item.strip()}" for item in bullet_list])
     
     # Check for the most direct pattern first: "SectionName: content"
     pattern = f"{section_name}:\\s*(.*?)(?=\\s*[A-Za-z]+:|$)"
     match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-    if match:
+    if match and match.group(1):  # Add check for None
         return match.group(1).strip()
     
     # Try with markdown headers at different levels
     for header_level in range(3, 0, -1):
         pattern = f"{'#' * header_level}\\s*{section_name}\\s*\n(.*?)(?=\\s*#{1,3}\\s*[A-Za-z]|$)"
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-        if match:
+        if match and match.group(1):  # Add check for None
             return match.group(1).strip()
     
     # Special case for Action Items
@@ -262,7 +271,7 @@ def extract_section(text, section_name):
         # Look for "Action Items:" followed by a bullet point list
         pattern = r"Action\s*Items:?\s*((?:\s*[-*•]\s+.*\n?)+)"
         match = re.search(pattern, text, re.IGNORECASE)
-        if match:
+        if match and match.group(1):  # Add check for None
             return match.group(1).strip()
     
     return ""
@@ -273,7 +282,10 @@ def generate_markdown(conversations_for_day):
         return ""
         
     content = []
-    date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+    # Convert UTC time to local time before getting the date string
+    utc_time = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00'))
+    local_time = utc_time.astimezone() # Convert to local timezone
+    date_str = local_time.strftime('%Y-%m-%d')
     
     # Add the "Daily Summary" heading at the beginning
     content.append("# Daily Summary")
@@ -522,8 +534,11 @@ def process_conversations():
         
         # First pass - just collect all date strings to determine range
         for conversation in response['conversations']:
-            start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
-            date_str = start_date.strftime('%Y-%m-%d')
+            # Convert UTC time to local time to get the correct date
+            utc_time = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
+            local_time = utc_time.astimezone()  # Convert to local timezone
+            date_str = local_time.strftime('%Y-%m-%d')
+            
             seen_dates.add(date_str)
             
             # Skip if we already have a file for this date
