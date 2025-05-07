@@ -315,46 +315,71 @@ def generate_markdown(conversations_for_day):
         content.append(summary_text.strip())
         content.append("")
         
-        # Add sections with proper markdown headers
+        # Extract atmosphere section
         atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
         if atmosphere:
             content.append("## Atmosphere")
-            content.append(atmosphere + "\n")
+            # Clean up any leading bullet points
+            if atmosphere.startswith('-') or atmosphere.startswith('*') or atmosphere.startswith('•'):
+                atmosphere = re.sub(r'^[\s\-\*•]+', '', atmosphere.strip())
+            content.append(atmosphere)
+            content.append("")
         
+        # Extract key takeaways section
         key_takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
         if key_takeaways and key_takeaways.strip():
             content.append("## Key Takeaways")
-            # Fix for bullet points: ensure each bullet point is properly formatted
-            # Clean up any leading bullet points that might appear in the first line
-            key_takeaways = key_takeaways.strip()
-            if not key_takeaways.startswith('-') and not key_takeaways.startswith('*') and not key_takeaways.startswith('•'):
-                # If it doesn't already have bullet points, format each line as a bullet point
-                formatted_takeaways = []
-                for line in key_takeaways.split('\n'):
-                    if line.strip():
-                        if not line.strip().startswith('-') and not line.strip().startswith('*') and not line.strip().startswith('•'):
-                            formatted_takeaways.append(f"- {line.strip()}")
-                        else:
-                            formatted_takeaways.append(line.strip())
-                key_takeaways = '\n'.join(formatted_takeaways)
-            content.append(key_takeaways)
-            content.append("\n")
+            
+            # Process key takeaways to ensure proper bullet point formatting
+            formatted_lines = []
+            lines = key_takeaways.strip().split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Remove any asterisks or bullet points at the beginning and clean up
+                if line.startswith('-') or line.startswith('*') or line.startswith('•'):
+                    # Already has bullet point, just standardize it
+                    line = re.sub(r'^[\s\-\*•]+\s*', '- ', line)
+                else:
+                    # Add bullet point if missing
+                    line = f"- {line}"
+                
+                formatted_lines.append(line)
+            
+            # Add the formatted key takeaways
+            content.append('\n'.join(formatted_lines))
+            content.append("")
         
+        # Extract action items section
         action_items = extract_section(conversations_for_day[0][0]['summary'], 'Action Items')
         if action_items:
             content.append("## Action Items")
-            # Similar fix for action items
-            action_items = action_items.strip()
-            if not action_items.startswith('-') and not action_items.startswith('*') and not action_items.startswith('•'):
-                formatted_actions = []
-                for line in action_items.split('\n'):
-                    if line.strip():
-                        if not line.strip().startswith('-') and not line.strip().startswith('*') and not line.strip().startswith('•'):
-                            formatted_actions.append(f"- {line.strip()}")
-                        else:
-                            formatted_actions.append(line.strip())
-                action_items = '\n'.join(formatted_actions)
-            content.append(action_items + "\n")
+            
+            # Process action items to ensure proper bullet point formatting
+            formatted_lines = []
+            lines = action_items.strip().split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Remove any asterisks or bullet points at the beginning and clean up
+                if line.startswith('-') or line.startswith('*') or line.startswith('•'):
+                    # Already has bullet point, just standardize it
+                    line = re.sub(r'^[\s\-\*•]+\s*', '- ', line)
+                else:
+                    # Add bullet point if missing
+                    line = f"- {line}"
+                
+                formatted_lines.append(line)
+            
+            # Add the formatted action items
+            content.append('\n'.join(formatted_lines))
+            content.append("")
     
     # Process ALL conversations for this day
     content.append("## Conversations")
