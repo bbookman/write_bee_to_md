@@ -1,14 +1,45 @@
 import requests
-from config import BEE_API_ENDPOINT, TARGET_DIR, FACTS_FILE_PATH
+from config import BEE_API_ENDPOINT, TARGET_DIR, FACTS_FILE_PATH, TEXT_RANK_COMPRESSION_RATIO
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
 import getpass
+import nltk
+from nltk.tokenize import sent_tokenize
+from nltk.corpus import stopwords
+from nltk.metrics import edit_distance
+from nltk.util import ngrams
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import os
+import networkx as nx
 
 # Ensure target directory exists
 Path(TARGET_DIR).mkdir(parents=True, exist_ok=True)
 # Ensure parent directory of facts file exists
 Path(FACTS_FILE_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+def download_nltk_resources():
+    """Download required NLTK resources if they don't exist."""
+    try:
+        # Check if stopwords is available, if not this will throw
+        nltk.data.find('corpora/stopwords')
+        print("NLTK stopwords already available")
+    except LookupError:
+        print("Downloading NLTK stopwords")
+        nltk.download('stopwords', quiet=True)
+    
+    try:
+        # Check if punkt tokenizer is available
+        nltk.data.find('tokenizers/punkt')
+        print("NLTK punkt tokenizer already available") 
+    except LookupError:
+        print("Downloading NLTK punkt tokenizer")
+        nltk.download('punkt', quiet=True)
+
+# Download required NLTK resources
+download_nltk_resources()
 
 def get_api_key(max_attempts=3):
     """
@@ -295,6 +326,12 @@ def generate_markdown(conversations_for_day):
     if conversations_for_day[0][0].get('summary'):
         summary_text = conversations_for_day[0][0]['summary']
         
+        # First apply TextRank summarization to reduce text volume
+        summary_text = summarize_with_textrank(summary_text)
+        
+        # Then apply text deduplication for further refinement
+        summary_text = deduplicate_text_with_nltk(summary_text)
+        
         # Clean up the summary text (removing sections we'll add separately)
         summary_text = re.sub(r'(?:#{1,3}\s*)?Atmosphere\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE)
         summary_text = re.sub(r'(?:#{1,3}\s*)?Key\s*Take?\s*[aA]ways\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', summary_text, flags=re.MULTILINE | re.IGNORECASE)
@@ -318,6 +355,10 @@ def generate_markdown(conversations_for_day):
         # Extract atmosphere section
         atmosphere = extract_section(conversations_for_day[0][0]['summary'], 'Atmosphere')
         if atmosphere:
+            # Apply TextRank and deduplication to atmosphere section 
+            atmosphere = summarize_with_textrank(atmosphere)
+            atmosphere = deduplicate_text_with_nltk(atmosphere)
+            
             content.append("## Atmosphere")
             # Clean up any leading bullet points
             if atmosphere.startswith('-') or atmosphere.startswith('*') or atmosphere.startswith('•'):
@@ -328,57 +369,82 @@ def generate_markdown(conversations_for_day):
         # Extract key takeaways section
         key_takeaways = extract_section(conversations_for_day[0][0]['summary'], 'Key Takeaways')
         if key_takeaways and key_takeaways.strip():
-            content.append("## Key Takeaways")
+            # Apply TextRank and deduplication to key takeaways while preserving bullet points
+            key_takeaways_lines = key_takeaways.strip().split('\n')
+            deduplicated_lines = []
             
-            # Process key takeaways to ensure proper bullet point formatting
-            formatted_lines = []
-            lines = key_takeaways.strip().split('\n')
-            
-            for line in lines:
+            # Extract bullet points and texts separately to handle summarization while preserving formatting
+            bullet_texts = []
+            for line in key_takeaways_lines:
                 line = line.strip()
                 if not line:
                     continue
                     
-                # Remove any asterisks or bullet points at the beginning and clean up
+                # Extract the text part (without bullet point)
                 if line.startswith('-') or line.startswith('*') or line.startswith('•'):
-                    # Already has bullet point, just standardize it
-                    line = re.sub(r'^[\s\-\*•]+\s*', '- ', line)
+                    text_part = re.sub(r'^[\s\-\*•]+\s*', '', line)
                 else:
-                    # Add bullet point if missing
-                    line = f"- {line}"
-                
-                formatted_lines.append(line)
+                    text_part = line
+                    
+                bullet_texts.append(text_part)
             
-            # Add the formatted key takeaways
-            content.append('\n'.join(formatted_lines))
+            # Process the text content of bullet points
+            if bullet_texts:
+                combined_text = ' '.join(bullet_texts)
+                # First apply TextRank to reduce text volume
+                summarized_combined = summarize_with_textrank(combined_text)
+                # Then apply deduplication for further refinement
+                deduplicated_combined = deduplicate_text_with_nltk(summarized_combined)
+                
+                # Split back into individual bullet points
+                if deduplicated_combined:
+                    # Recreate bullet points using sentence tokenization
+                    for sentence in sent_tokenize(deduplicated_combined):
+                        if sentence.strip():
+                            deduplicated_lines.append(f"- {sentence.strip()}")
+            
+            content.append("## Key Takeaways")
+            content.append('\n'.join(deduplicated_lines))
             content.append("")
         
         # Extract action items section
         action_items = extract_section(conversations_for_day[0][0]['summary'], 'Action Items')
         if action_items:
-            content.append("## Action Items")
+            # Apply TextRank and deduplication to action items while preserving bullet points
+            action_items_lines = action_items.strip().split('\n')
+            deduplicated_action_items = []
             
-            # Process action items to ensure proper bullet point formatting
-            formatted_lines = []
-            lines = action_items.strip().split('\n')
-            
-            for line in lines:
+            # Extract bullet points and texts separately
+            action_texts = []
+            for line in action_items_lines:
                 line = line.strip()
                 if not line:
                     continue
                     
-                # Remove any asterisks or bullet points at the beginning and clean up
+                # Extract the text part (without bullet point)
                 if line.startswith('-') or line.startswith('*') or line.startswith('•'):
-                    # Already has bullet point, just standardize it
-                    line = re.sub(r'^[\s\-\*•]+\s*', '- ', line)
+                    text_part = re.sub(r'^[\s\-\*•]+\s*', '', line)
                 else:
-                    # Add bullet point if missing
-                    line = f"- {line}"
-                
-                formatted_lines.append(line)
+                    text_part = line
+                    
+                action_texts.append(text_part)
             
-            # Add the formatted action items
-            content.append('\n'.join(formatted_lines))
+            # Process the text content of bullet points
+            if action_texts:
+                combined_text = ' '.join(action_texts)
+                # First apply TextRank to reduce text volume
+                summarized_combined = summarize_with_textrank(combined_text)
+                # Then apply deduplication for further refinement
+                deduplicated_combined = deduplicate_text_with_nltk(summarized_combined)
+                
+                # Split back into individual bullet points
+                if deduplicated_combined:
+                    for sentence in sent_tokenize(deduplicated_combined):
+                        if sentence.strip():
+                            deduplicated_action_items.append(f"- {sentence.strip()}")
+            
+            content.append("## Action Items")
+            content.append('\n'.join(deduplicated_action_items))
             content.append("")
     
     # Process ALL conversations for this day
@@ -392,9 +458,14 @@ def generate_markdown(conversations_for_day):
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
             content.append(f"Location: {conversation['primary_location']['address']}\n")
         
-        # Add short_summary if available
+        # Add short_summary if available and apply TextRank and deduplication
         if conversation.get('short_summary'):
-            content.append(f"{clean_bee_text(conversation['short_summary'])}\n")
+            short_summary = clean_bee_text(conversation['short_summary'])
+            # First apply TextRank to reduce text volume
+            short_summary = summarize_with_textrank(short_summary)
+            # Then apply deduplication for further refinement
+            short_summary = deduplicate_text_with_nltk(short_summary)
+            content.append(f"{short_summary}\n")
         
         # Add transcript
         conversation_data = conversation_detail.get('conversation', {})
@@ -808,6 +879,187 @@ def process_facts():
     except Exception as e:
         print(f"ERROR: Unexpected error in process_facts: {e}")
         return files_updated
+
+def deduplicate_text_with_nltk(text, similarity_threshold=0.75):
+    """
+    Enhanced text deduplication with better semantic understanding.
+    Uses TF-IDF and cosine similarity to identify and remove redundant sentences
+    while preserving key themes and important content.
+    
+    Args:
+        text (str): Text to deduplicate
+        similarity_threshold (float): Threshold for considering sentences similar (0.0-1.0)
+        
+    Returns:
+        str: Deduplicated text with similar/duplicate sentences removed
+    """
+    if not text or len(text.strip()) == 0:
+        return text
+        
+    print("Deduplicating text with enhanced NLTK...")
+    
+    # Tokenize text into sentences
+    sentences = sent_tokenize(text)
+    if len(sentences) <= 1:
+        return text
+        
+    # Get all English stopwords
+    try:
+        stop_words = set(stopwords.words('english'))
+    except LookupError:
+        nltk.download('stopwords', quiet=True)
+        stop_words = set(stopwords.words('english'))
+    
+    # Function to preprocess a sentence for similarity comparison
+    def preprocess_sentence(sentence):
+        # More aggressive preprocessing
+        sentence = re.sub(r'[^\w\s]', '', sentence.lower())
+        words = sentence.split()
+        filtered_words = [word for word in words if word not in stop_words and len(word) > 2]
+        return ' '.join(filtered_words)
+    
+    # Preprocess sentences
+    processed_sentences = [preprocess_sentence(s) for s in sentences]
+    
+    # Create TF-IDF vectors for sentences
+    vectorizer = TfidfVectorizer(min_df=1)
+    try:
+        tfidf_matrix = vectorizer.fit_transform(processed_sentences)
+    except ValueError:
+        # If all sentences are empty after preprocessing, return original
+        return text
+    
+    # Calculate cosine similarity between all sentence pairs
+    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+    
+    # Find sentences to keep with improved context awareness
+    sentences_to_keep = []
+    seen_indices = set()
+    
+    # First pass: keep the most important sentences (those that contain key topics)
+    key_topics = ["family", "meeting", "conversation", "discussion", "work", 
+                  "health", "important", "remember", "project", "schedule",
+                  "appointment", "event", "task", "goal", "plan"]
+    
+    for i, sentence in enumerate(sentences):
+        lower_s = sentence.lower()
+        if any(topic in lower_s for topic in key_topics) and i not in seen_indices:
+            sentences_to_keep.append(sentence)
+            seen_indices.add(i)
+            
+            # Mark similar sentences as seen
+            for j in range(len(sentences)):
+                if i != j and j not in seen_indices and cosine_sim[i, j] > similarity_threshold:
+                    seen_indices.add(j)
+                    print(f"Removed similar to key topic: '{sentences[j]}'")
+    
+    # Second pass: add remaining unique sentences
+    for i, sentence in enumerate(sentences):
+        if i not in seen_indices:
+            sentences_to_keep.append(sentence)
+            seen_indices.add(i)
+            
+            # Mark any similar sentences as seen
+            for j in range(i + 1, len(sentences)):
+                if j not in seen_indices and cosine_sim[i, j] > similarity_threshold:
+                    seen_indices.add(j)
+                    print(f"Removed duplicate: '{sentences[j]}'")
+    
+    # Sort sentences in original order to maintain flow
+    sentences_to_keep.sort(key=lambda s: sentences.index(s))
+    
+    # Recombine the deduplicated sentences
+    deduplicated_text = ' '.join(sentences_to_keep)
+    
+    # Calculate reduction percentage
+    original_len = len(sentences)
+    dedup_len = len(sentences_to_keep)
+    reduction = ((original_len - dedup_len) / original_len) * 100 if original_len > 0 else 0
+    
+    print(f"Enhanced deduplication: removed {original_len - dedup_len} of {original_len} sentences ({reduction:.1f}%)")
+    
+    return deduplicated_text
+
+def summarize_with_textrank(text, ratio=TEXT_RANK_COMPRESSION_RATIO):
+    """
+    Use TextRank algorithm to extract the most important sentences.
+    
+    Args:
+        text (str): Text to summarize
+        ratio (float): Proportion of sentences to keep (0.0-1.0)
+        
+    Returns:
+        str: Summarized text
+    """
+    if not text or len(text.strip()) == 0:
+        return text
+        
+    print(f"Applying TextRank summarization with ratio {ratio:.1f}...")
+    
+    # Tokenize text into sentences
+    sentences = sent_tokenize(text)
+    if len(sentences) <= 3:  # Don't summarize very short texts
+        return text
+    
+    # Get stopwords
+    try:
+        stop_words = set(stopwords.words('english'))
+    except LookupError:
+        nltk.download('stopwords', quiet=True)
+        stop_words = set(stopwords.words('english'))
+    
+    # Preprocess sentences
+    preprocessed = []
+    for sentence in sentences:
+        # Clean and tokenize the sentence
+        words = re.sub(r'[^\w\s]', '', sentence.lower()).split()
+        # Remove stopwords and short words
+        filtered = [w for w in words if w not in stop_words and len(w) > 2]
+        preprocessed.append(filtered)
+    
+    # Create similarity matrix
+    similarity_matrix = np.zeros((len(sentences), len(sentences)))
+    
+    for i in range(len(sentences)):
+        for j in range(len(sentences)):
+            if i != j:
+                # Calculate Jaccard similarity
+                words_i = set(preprocessed[i])
+                words_j = set(preprocessed[j])
+                
+                if not words_i or not words_j:
+                    continue
+                    
+                intersection = len(words_i.intersection(words_j))
+                union = len(words_i.union(words_j))
+                
+                if union > 0:
+                    similarity_matrix[i][j] = intersection / union
+    
+    # Apply PageRank to find important sentences
+    nx_graph = nx.from_numpy_array(similarity_matrix)
+    try:
+        scores = nx.pagerank(nx_graph)
+    except:
+        # If PageRank fails (e.g., disconnected graph), return original text
+        print("TextRank: PageRank algorithm failed, returning original text")
+        return text
+    
+    # Get top sentences based on ratio
+    ranked_sentences = sorted(((scores[i], i, s) for i, s in enumerate(sentences)), reverse=True)
+    
+    # Select top sentences based on the ratio
+    num_sentences = max(1, int(len(sentences) * ratio))
+    selected_indices = [item[1] for item in ranked_sentences[:num_sentences]]
+    
+    # Return sentences in original order for better readability
+    selected_sentences = [sentences[i] for i in sorted(selected_indices)]
+    
+    # Calculate reduction percentage
+    reduction = ((len(sentences) - len(selected_sentences)) / len(sentences)) * 100
+    print(f"TextRank summarization: kept {len(selected_sentences)} of {len(sentences)} sentences ({reduction:.1f}% reduction)")
+    
+    return ' '.join(selected_sentences)
 
 if __name__ == "__main__":
     try:

@@ -1,4 +1,5 @@
-BEE_API_KEY = "sk-eb1593140ffde5856d6e96d9f9c4a74eb20d4441ea84e6e2"
+BEE_API_KEY = ""
 BEE_API_ENDPOINT = "https://api.bee.computer/v1"
-TARGET_DIR = "/Users/brucebookman/bruce_vault/Conversations/bee"
-FACTS_FILE_PATH = "/Users/brucebookman/bruce_vault/Conversations/bee/facts.md"
+TARGET_DIR = "/Users/brucebookman/bee_to_md"
+FACTS_FILE_PATH = "/Users/brucebookman/bee_test_bee_to_md/facts.md"
+TEXT_RANK_COMPRESSION_RATIO = 0.7  # Set to 0.7 by default (keep 70% of content)
