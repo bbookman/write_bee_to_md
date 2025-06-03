@@ -107,6 +107,10 @@ def extract_section(text, section_name):
     variations = [section_name]
     if section_name.lower() == "key takeaways":
         variations = ["Key Takeaways", "Key Take Aways", "Key Take aways", "Key Takeaways"]
+    elif section_name.lower() == "atmosphere":
+        variations = ["Atmosphere", "atmosphere"]
+    elif section_name.lower() == "action items":
+        variations = ["Action Items", "action items", "Action items"]
     
     # Try all variations with different header levels
     for variation in variations:
@@ -123,12 +127,17 @@ def extract_section(text, section_name):
         if match:
             return match.group(1).strip()
     
-    # Try bullet-point style lists for Key Takeaways
+    # Special handling for Key Takeaways - look for bullet points after summary
     if section_name.lower() == "key takeaways":
-        pattern = r"(?:^|\n)(?:\*|\-|\d+\.)\s+(.+(?:\n(?:\*|\-|\d+\.)\s+.+)*)"
+        # Look for bullet points that appear after the main summary text
+        pattern = r"(?:##\s*)?(?:\*|\-|\d+\.)\s+(.+(?:\n(?:\*|\-|\d+\.)\s+.+)*)"
         match = re.search(pattern, text, re.MULTILINE)
         if match:
-            return match.group(1).strip()
+            # Extract all bullet points
+            bullet_pattern = r"(?:\*|\-|\d+\.)\s+(.+)"
+            bullets = re.findall(bullet_pattern, match.group(0))
+            if bullets:
+                return "\n".join(f"- {bullet.strip()}" for bullet in bullets)
     
     return ""
 
@@ -140,58 +149,128 @@ def generate_markdown(conversations_for_day):
     content = []
     date_str = datetime.fromisoformat(conversations_for_day[0][0]['start_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
     
-    # Function to safely extract content, handling None
-    def safe_extract(text, section_name):
-        extracted = extract_section(text, section_name)
-        return extracted if extracted else None
+    # Find the best summary to use for day-level sections
+    best_summary = None
+    best_score = 0
+    best_conversation_id = None
     
-    # Extract main summary and clean it
-    main_summary = conversations_for_day[0][0].get('summary')
-    if main_summary:
-        # Remove any existing section headers to avoid duplicates
-        main_summary = re.sub(r'(?:#{1,3}\s*)?(Atmosphere|Key\s*Take\s*[aA]ways|Action\s*Items)\s*\n[\s\S]*?(?=\n\s*(?:#{1,3}\s*)?[A-Z]|$)', '', main_summary, flags=re.MULTILINE | re.IGNORECASE)
-        main_summary = re.sub(r'^\s*[-*•]\s+.*$', '', main_summary, flags=re.MULTILINE)
-        main_summary = re.sub(r'\n{3,}', '\n\n', main_summary)
-        content.append(f"# {main_summary.strip()}")
-        content.append("\n")
+    for conversation, _ in conversations_for_day:
+        summary = conversation.get('summary')
+        conversation_id = conversation['id']
+        print(f"DEBUG: Checking conversation {conversation_id} for summary sections")
+        print(f"DEBUG: Has summary: {summary is not None}")
+        
+        if summary:
+            # Score the summary based on how complete it is
+            score = 0
+            has_summary_section = '### Summary' in summary
+            has_atmosphere_section = '### Atmosphere' in summary  
+            has_takeaways_section = '### Key Takeaways' in summary
+            
+            if has_summary_section:
+                score += 10
+            if has_atmosphere_section:
+                score += 10
+            if has_takeaways_section:
+                score += 10
+                
+            # Bonus points for having all three sections
+            if has_summary_section and has_atmosphere_section and has_takeaways_section:
+                score += 20
+                
+            print(f"DEBUG: Conversation {conversation_id} score: {score}")
+            
+            if score > best_score:
+                best_score = score
+                best_summary = summary
+                best_conversation_id = conversation_id
+                print(f"DEBUG: New best summary from conversation {conversation_id} with score {score}")
+        else:
+            print(f"DEBUG: No summary found for conversation {conversation_id}")
     
-    # Extract and add Atmosphere section
-    atmosphere = safe_extract(conversations_for_day[0][0]['summary'], 'Atmosphere')
-    if atmosphere:
-        content.append("## Atmosphere")
-        content.append(atmosphere + "\n")
+    if best_summary:
+        print(f"DEBUG: Final best_summary selected from conversation {best_conversation_id} with score {best_score}")
+    else:
+        print("DEBUG: No best_summary found!")
     
-    # Extract and add Key Takeaways section
-    key_takeaways = safe_extract(conversations_for_day[0][0]['summary'], 'Key Takeaways')
-    if key_takeaways and key_takeaways.strip():
-        content.append("## Key Takeaways")
-        content.append(key_takeaways.strip())
-        content.append("\n")
+    if best_summary:
+        # Split by ### sections for easier parsing
+        sections = best_summary.split('### ')
+        
+        # Extract Summary section
+        for section in sections:
+            if section.startswith('Summary\n'):
+                summary_content = section[len('Summary\n'):].strip()
+                # Remove any text after the next section starts
+                next_section_pos = summary_content.find('\n\n### ')
+                if next_section_pos > 0:
+                    summary_content = summary_content[:next_section_pos]
+                content.append("# Summary")
+                content.append(summary_content)
+                content.append("")
+                break
+        
+        # Extract Atmosphere section
+        for section in sections:
+            if section.startswith('Atmosphere\n'):
+                atmosphere_content = section[len('Atmosphere\n'):].strip()
+                # Remove any text after the next section starts
+                next_section_pos = atmosphere_content.find('\n\n### ')
+                if next_section_pos > 0:
+                    atmosphere_content = atmosphere_content[:next_section_pos]
+                content.append("## Atmosphere")
+                content.append(atmosphere_content)
+                content.append("")
+                break
+        
+        # Extract Key Takeaways section
+        for section in sections:
+            if section.startswith('Key Takeaways\n'):
+                takeaways_content = section[len('Key Takeaways\n'):].strip()
+                # Remove any text after the next section starts
+                next_section_pos = takeaways_content.find('\n\n### ')
+                if next_section_pos > 0:
+                    takeaways_content = takeaways_content[:next_section_pos]
+                content.append("## Key Takeaways")
+                content.append(takeaways_content)
+                content.append("")
+                break
     
-    # Extract and add Action Items section
-    action_items = safe_extract(conversations_for_day[0][0]['summary'], 'Action Items')
-    if action_items:
-        content.append("### Action Items")
-        content.append(action_items + "\n")
+    # Add separator before individual conversations
+    if content:
+        content.append("---")
+        content.append("")
     
     # Process each conversation
     for conversation, conversation_detail in conversations_for_day:
-        content.append("\nConversation ID: " + str(conversation['id']))
+        content.append(f"## Conversation {conversation['id']}")
         if conversation.get('primary_location') and conversation['primary_location'].get('address'):
-            content.append("Location: " + conversation['primary_location']['address'] + "\n")
+            content.append(f"**Location:** {conversation['primary_location']['address']}")
+        content.append("")
         
-        # Add ### header to short_summary
+        # Add short_summary as title if available
         short_summary = conversation.get('short_summary')
         if short_summary:
-            content.append(f"### {clean_bee_text(short_summary)}")
+            # Clean up the short_summary (it sometimes contains thinking process)
+            if "THOUGHT" in short_summary:
+                # Extract just the final title after all the thinking
+                lines = short_summary.split('\n')
+                title = lines[-1].strip()
+                if title and len(title) < 100:  # Reasonable title length
+                    content.append(f"**Title:** {title}")
+            else:
+                content.append(f"**Title:** {clean_bee_text(short_summary)}")
+            content.append("")
         
+        # Add transcript if available
         conversation_data = conversation_detail.get('conversation', {})
         transcriptions = conversation_data.get('transcriptions', [])
         if transcriptions and transcriptions[0].get('utterances'):
             content.append("### Transcript")
             for utterance in transcriptions[0]['utterances']:
                 if utterance.get('text') and utterance.get('speaker'):
-                    content.append("Speaker " + str(utterance['speaker']) + ": " + utterance['text'])
+                    content.append(f"**Speaker {utterance['speaker']}:** {utterance['text']}")
+            content.append("")
     
     return "\n".join(content)
 
@@ -294,109 +373,89 @@ def file_exists(target_path: Path, date_str: str) -> bool:
 
 def process_conversations():
     """
-<<<<<<< HEAD
-    Process all conversations and create markdown files in TARGET_DIR.
-    Skip writing files for today's conversations.
-    Only process the number of pages specified in PAGES_TO_GET.
-=======
     Process all conversations and create markdown files for missing dates.
     Skip today's conversations and only process dates that don't have files.
->>>>>>> development
     """
     target_path = Path(TARGET_DIR)
     target_path.mkdir(parents=True, exist_ok=True)
-    
+
     print(f"DEBUG: Writing files to {target_path}")
-    
+
     # Get all existing date files
     existing_dates = set()
     for file_path in target_path.glob('*.md'):
         date_str = file_path.stem
         if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
             existing_dates.add(date_str)
-    
-<<<<<<< HEAD
-    while page <= PAGES_TO_GET:  # Only get specified number of pages
-=======
+
     # Get conversations to find date range
     response = get_bee_conversations(1)
     if not response.get('conversations'):
         print("DEBUG: No conversations found")
         return
-    
+
     # Calculate missing dates (all dates from earliest in API to yesterday)
     yesterday = (datetime.now() - timedelta(days=1)).date()
     missing_dates = set()
-    
+
     # Track which dates we've seen in the API responses
     seen_dates = set()
     daily_conversations = {}
     page = 1
-    
+
     # Process pages until we've found all missing dates or reached the end
-    while True:
->>>>>>> development
+    while page <= PAGES_TO_GET:
         response = get_bee_conversations(page)
         print(f"DEBUG: Processing page {page} of {PAGES_TO_GET}")
-        
+
         if not response.get('conversations'):
-<<<<<<< HEAD
-            print("DEBUG: No conversations found in response")
-            break
-        
-        print(f"DEBUG: Found {len(response['conversations'])} conversations")
-=======
             print(f"DEBUG: No conversations found on page {page}")
             break
->>>>>>> development
-        
-        print(f"DEBUG: Processing page {page} of {response.get('totalPages', 1)}")
-        
+
+        print(f"DEBUG: Found {len(response['conversations'])} conversations")
+
         # First pass - just collect all date strings to determine range
         for conversation in response['conversations']:
             start_date = datetime.fromisoformat(conversation['start_time'].replace('Z', '+00:00'))
             date_str = start_date.strftime('%Y-%m-%d')
             seen_dates.add(date_str)
             
-            # Skip if it's today or we already have a file
-            if start_date.date() >= datetime.now().date() or date_str in existing_dates:
+            print(f"DEBUG: Processing conversation {conversation['id']} for date {date_str}")
+
+            # Skip if we already have a file for this date
+            if date_str in existing_dates:
+                print(f"DEBUG: Skipping {date_str} - file already exists")
                 continue
-                
+
             # Get conversation details and add to daily collection
+            print(f"DEBUG: Getting conversation detail for {conversation['id']}")
             conversation_detail = get_conversation_detail(conversation['id'])
-            
+            print(f"DEBUG: Got conversation detail for {conversation['id']}")
+
             if date_str not in daily_conversations:
                 daily_conversations[date_str] = []
-            
+
             daily_conversations[date_str].append((conversation, conversation_detail))
-<<<<<<< HEAD
-            print(f"DEBUG: Added conversation {conversation['id']} to {date_str}")
-            
-        # Stop if we've reached the total pages or our PAGES_TO_GET limit
-        if page >= response.get('totalPages', 0) or page >= PAGES_TO_GET:
-            print(f"DEBUG: Reached page limit ({page}/{PAGES_TO_GET})")
-=======
             print(f"DEBUG: Added conversation {conversation['id']} for {date_str}")
-        
-        # If we've processed all pages, stop
+
+        # Stop if we've reached the total pages or our PAGES_TO_GET limit
         if page >= response.get('totalPages', 1):
             print(f"DEBUG: Reached the last page ({page})")
->>>>>>> development
             break
-            
+
         page += 1
-    
+
     # Process collected conversations
     for date_str, conversations in daily_conversations.items():
         print(f"DEBUG: Writing {len(conversations)} conversations for {date_str}")
         conversations.sort(key=lambda x: x[0]['start_time'])
         markdown_content = generate_markdown(conversations)
         markdown_content = clean_markdown_content(markdown_content)
-        
+
         output_file = target_path / f"{date_str}.md"
         output_file.write_text(markdown_content, encoding='utf-8')
         print(f"Created markdown file: {output_file}")
-    
+
     # Report any dates that were never seen in API responses
     for date_str in missing_dates - seen_dates:
         print(f"DEBUG: No data found for {date_str}")
